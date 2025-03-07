@@ -19,9 +19,9 @@ const Card = ({
   const baseStyles = "rounded-xl overflow-hidden";
   
   const variantStyles = {
-    default: "bg-card text-card-foreground shadow",
+    default: "bg-card text-card-foreground shadow border border-white/10",
     glass: "glass-card",
-    outline: "border border-border bg-transparent"
+    outline: "border border-white/10 bg-transparent"
   };
   
   const hoverStyles = isHoverable ? "hover-lift" : "";
@@ -69,7 +69,7 @@ const CardTitle = ({
 }: CardTitleProps) => {
   return (
     <h3
-      className={cn("font-semibold leading-none tracking-tight", className)}
+      className={cn("font-semibold leading-none tracking-tight text-white", className)}
       {...props}
     >
       {children}
@@ -86,7 +86,7 @@ const CardDescription = ({
 }: CardDescriptionProps) => {
   return (
     <p
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-sm text-gray-300", className)}
       {...props}
     >
       {children}

@@ -10,16 +10,16 @@ import ChatButton from '@/components/chat/ChatButton';
 const Index = () => {
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <Hero className="mb-8 rounded-xl border" />
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 bg-black text-white">
+        <Hero className="mb-8 rounded-xl border border-white/10 bg-black/50" />
         
         <section className="mb-8">
-          <h2 className="mb-4 text-2xl font-bold">Market Statistics</h2>
+          <h2 className="mb-4 text-2xl font-bold text-white">Market Statistics</h2>
           <MarketStats />
         </section>
         
         <section className="mb-8">
-          <h2 className="mb-4 text-2xl font-bold">Trading Insights</h2>
+          <h2 className="mb-4 text-2xl font-bold text-white">Trading Insights</h2>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <StockChart
               symbol="AAPL"
@@ -41,12 +41,12 @@ const Index = () => {
         </section>
         
         <section className="mb-8">
-          <h2 className="mb-4 text-2xl font-bold">AI Investment Insights</h2>
+          <h2 className="mb-4 text-2xl font-bold text-white">AI Investment Insights</h2>
           <AIInsights />
         </section>
         
         <section className="mb-8">
-          <h2 className="mb-4 text-2xl font-bold">Market Analysis</h2>
+          <h2 className="mb-4 text-2xl font-bold text-white">Market Analysis</h2>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <StockChart
               symbol="TSLA"
