@@ -1,6 +1,5 @@
-
 import React, { ReactNode } from 'react';
-import { Search, Bell, User, Settings, LogOut, Menu, X } from 'lucide-react';
+import { Search, Bell, User, Settings, LogOut, Menu, X, Briefcase, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui-components/Button';
 import { useState } from 'react';
 
@@ -32,21 +31,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             {/* Logo */}
             <div className="flex items-center space-x-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2"
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="h-5 w-5 text-primary-foreground"
-                >
-                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
-                  <polyline points="16 7 22 7 22 13"></polyline>
-                </svg>
+                <div className="relative">
+                  <TrendingUp className="h-4 w-4 text-primary-foreground absolute" />
+                  <Briefcase className="h-5 w-5 text-primary-foreground" />
+                </div>
               </div>
-              <span className="hidden text-xl font-bold sm:inline-block">AIFinance</span>
+              <span className="hidden text-xl font-bold sm:inline-block">Trust me</span>
             </div>
           </div>
           
@@ -154,7 +144,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       </main>
       
       <footer className="border-t py-4 text-center text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} AIFinance. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} Trust me. All rights reserved.</p>
       </footer>
     </div>
   );

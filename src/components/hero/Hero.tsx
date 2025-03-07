@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui-components/Button';
-import { ArrowRight, LineChart, TrendingUp } from 'lucide-react';
+import { ArrowRight, LineChart, TrendingUp, Briefcase } from 'lucide-react';
 
 interface HeroProps {
   className?: string;
@@ -25,12 +25,12 @@ const Hero: React.FC<HeroProps> = ({ className }) => {
           </div>
           
           <h1 className="mb-6 text-balance text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-            <span className="block">Advanced Financial</span>
-            <span className="block text-gradient">Intelligence Dashboard</span>
+            <span className="block">Trust me</span>
+            <span className="block text-gradient">Financial & Business AI</span>
           </h1>
           
           <p className="mb-8 text-balance text-lg text-muted-foreground">
-            Get real-time market insights, AI-powered investment recommendations, and personalized financial guidance—all in one elegant dashboard.
+            Get real-time market insights, AI-powered investment recommendations, and personalized business guidance—all in one elegant dashboard.
           </p>
           
           <div className="flex flex-wrap gap-4">
