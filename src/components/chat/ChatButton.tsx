@@ -108,10 +108,8 @@ const ChatButton: React.FC<ChatButtonProps> = ({ className }) => {
       </Button>
       
       {isOpen && (
-        <Card 
-          variant="glass" 
-          className="fixed bottom-24 right-6 z-50 w-96 overflow-hidden shadow-xl animate-scale-in"
-        >
+        <div className="fixed bottom-24 right-6 z-50 w-96 overflow-hidden shadow-xl animate-scale-in">
+          <Card variant="glass">
           <div className="flex items-center justify-between border-b p-4">
             <div className="flex items-center">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
@@ -174,7 +172,7 @@ const ChatButton: React.FC<ChatButtonProps> = ({ className }) => {
               </div>
             )}
             
-            <CardFooter className="border-t p-4">
+            <CardFooter>
               <div className="relative flex w-full items-center">
                 <input
                   type="text"
@@ -198,7 +196,8 @@ const ChatButton: React.FC<ChatButtonProps> = ({ className }) => {
               </div>
             </CardFooter>
           </div>
-        </Card>
+          </Card>
+        </div>
       )}
     </>
   );
