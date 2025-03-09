@@ -53,7 +53,6 @@ interface MarketStatsProps {
   className?: string;
 }
 
-const MarketStats: React.FC<MarketStatsProps> = ({ className }) => {
   return (
     <Card variant="glass" className={className}>
       <CardHeader className="pb-2">
@@ -89,5 +88,4 @@ const MarketStats: React.FC<MarketStatsProps> = ({ className }) => {
     </Card>
   );
 };
-
 export default MarketStats;

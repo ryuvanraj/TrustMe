@@ -1,6 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui-components/Card';
+import axios from 'axios';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from '@/components/ui-components/Card';
 import { Button } from '@/components/ui-components/Button';
 import { AlertCircle, ArrowRight, BarChart2, Lightbulb, TrendingUp } from 'lucide-react';
 
@@ -168,7 +174,6 @@ const AIInsights: React.FC<AIInsightsProps> = ({ className }) => {
                 key={insight.id} 
                 className="group relative overflow-hidden rounded-lg border border-border bg-card p-4 transition-all duration-300 hover:border-primary/30 hover:shadow-md"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
                 <div className="relative z-10 flex items-start justify-between">
                   <div>
                     <div className="flex items-center">
