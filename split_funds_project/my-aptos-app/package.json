@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "aptos": "^1.21.0",
+    "my-aptos-app": "file:",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
