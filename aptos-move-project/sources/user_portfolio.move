@@ -11,17 +11,14 @@ module mock_coins_addr::user_portfolio {
         amount: u128,
     }
 
-    /// Portfolio structure maintaining original layout
     struct Portfolio has key {
         coins: vector<CoinData>
     }
 
-    /// Separate events resource to maintain backward compatibility
     struct PortfolioEvents has key {
         portfolio_events: event::EventHandle<PortfolioEvent>
     }
 
-    /// Event emitted when viewing or updating portfolio
     struct PortfolioEvent has copy, drop, store {
         symbol: vector<u8>,
         amount: u128,

@@ -217,15 +217,6 @@ app.post('/buy', async (req, res) => {
             });
         }
 
-        throw new Error(result.Error || 'Transaction failed');
-    } catch (error) {
-        console.error('Buy error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message || 'Transaction failed'
-        });
-    }
-});
 
 // Portfolio endpoint
 app.get('/portfolio', async (req, res) => {
