@@ -1,0 +1,9 @@
+[package]
+name = "mock_coins"
+version = "1.0.0"
+
+[addresses]
+mock_coins_addr = "0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework/", rev = "mainnet" }
