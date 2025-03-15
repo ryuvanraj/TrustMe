@@ -40,17 +40,21 @@ const App = () => {
         try {
             const response = await fetch('http://localhost:4002/market-data');
             const data = await response.json();
-            if (data && data.data) {
+            console.log('Fetched market data:', data);
+            if (data && data.data && Array.isArray(data.data)) {
                 setMarketData(data.data);
             } else {
-                setMarketData([]);
+                console.error('Invalid market data structure:', data);
+                setMarketData([]);  // Ensure empty array if invalid structure
             }
         } catch (error) {
             console.error('Error fetching market data:', error);
+            setMarketData([]);  // Ensure empty array in case of error
         } finally {
             setLoading(false);
         }
     };
+   
 
     const fetchPortfolio = async () => {
         if (!userWallet) return;
@@ -117,45 +121,110 @@ const App = () => {
     };
 
     const buyStock = async (coinIndex) => {
-      if (!connected || !userWallet) {
-          alert('Please connect wallet first');
-          return;
-      }
-  
-      setLoading(true);
-      try {
-          const response = await fetch('http://localhost:4002/buy', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  coinIndex,
-                  amountInUSD: Number(amountToBuy),
-                  walletAddress: userWallet.address
-              })
-          });
-  
-          const data = await response.json();
-          
-          if (!data.success) {
-              throw new Error(data.error || 'Transaction failed');
-          }
-  
-          console.log('Transaction confirmed:', data.transaction.hash);
-          alert(`Successfully purchased coin at index ${coinIndex}`);
-          
-          await Promise.all([
-              fetchMarketData(),
-              fetchBalance(),
-              fetchPortfolio()
-          ]);
-      } catch (error) {
-          console.error('Buy failed:', error);
-          alert(`Transaction failed: ${error.message}`);
-      } finally {
-          setLoading(false);
-      }
-  };
-
+        console.log("Selected coin index:", coinIndex);
+        console.log("Amount to Buy:", amountToBuy);
+        console.log("Wallet Address:", userWallet?.address);
+    
+        if (!connected || !userWallet) {
+            alert('Please connect wallet first');
+            return;
+        }
+    
+        if (coinIndex < 0 || coinIndex >= marketData.length) {
+            alert('Invalid coin index');
+            return;
+        }
+    
+        setLoading(true);
+        try {
+            const payload = {
+                coinIndex,
+                amountInUSD: Number(amountToBuy),
+                walletAddress: userWallet.address
+            };
+    
+            console.log("Payload sent to backend:", payload);
+    
+            // Get transaction payload from backend
+            const response = await fetch('http://localhost:4002/buy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+    
+            const data = await response.json();
+    
+            if (!data.success) {
+                throw new Error(data.error || 'Transaction failed');
+            }
+    
+            console.log("Received from backend:", data);
+            
+            // Extract the necessary components for the function string
+            if (!data.pendingTransaction?.payload?.value?.module_name?.address?.address ||
+                !data.pendingTransaction?.payload?.value?.module_name?.name?.value ||
+                !data.pendingTransaction?.payload?.value?.function_name?.value) {
+                throw new Error('Missing transaction components in payload');
+            }
+            
+            // Extract address bytes and convert to hex string
+            const addressBytes = data.pendingTransaction.payload.value.module_name.address.address;
+            const addressHex = '0x' + Object.values(addressBytes)
+                .map(byte => byte.toString(16).padStart(2, '0'))
+                .join('');
+                
+            // Get module and function names
+            const moduleName = data.pendingTransaction.payload.value.module_name.name.value;
+            const functionName = data.pendingTransaction.payload.value.function_name.value;
+            
+            // Construct the full function string in the format required by Petra wallet
+            const fullFunction = `${addressHex}::${moduleName}::${functionName}`;
+            
+            // Convert byte array arguments to proper format
+            const rawArgs = data.pendingTransaction.payload.value.args || [];
+            
+            // Convert the first argument (coin index) to a number
+            const coinIndexArg = parseInt(Object.values(rawArgs[0])[0]);
+            
+            // Convert the second argument (amount) to a string
+            // This combines all bytes into a single value
+            const amountBytes = Object.values(rawArgs[1]);
+            let amountValue = 0;
+            for (let i = 0; i < amountBytes.length; i++) {
+                amountValue += amountBytes[i] * Math.pow(256, i);
+            }
+            const amountArg = amountValue.toString();
+            
+            // Create a properly formatted entry function payload that Petra can understand
+            const entryFunctionPayload = {
+                type: "entry_function_payload",
+                function: fullFunction,
+                type_arguments: [],
+                arguments: [coinIndexArg, amountArg]
+            };
+            
+            console.log("Entry function payload for Petra:", entryFunctionPayload);
+            
+            // Submit transaction with the correct format
+            const signAndSubmitResult = await window.aptos.signAndSubmitTransaction(entryFunctionPayload);
+    
+            console.log('Transaction confirmed:', signAndSubmitResult);
+            alert(`Successfully purchased ${data.metadata.coin_amount} ${data.metadata.coin_symbol}`);
+    
+            // Refresh data
+            await Promise.all([
+                fetchMarketData(),
+                fetchBalance(),
+                fetchPortfolio()
+            ]);
+        } catch (error) {
+            console.error('Buy failed:', error);
+            alert(`Transaction failed: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
     const handleAmountChange = (event) => {
         const value = parseFloat(event.target.value);
         setAmountToBuy(isNaN(value) ? 0 : value);
@@ -243,25 +312,29 @@ const App = () => {
                         <p>No market data available.</p>
                     ) : (
                         <div className="row">
-                            {marketData.map((coin, index) => (
-                                <div key={index} className="col-md-4 mb-3">
-                                    <div className="card">
-                                        <div className="card-body">
-                                            <h2 className="card-title">{coin.symbol}</h2>
-                                            <p className="card-text">
-                                                Price: ${coin.price ? coin.price.toFixed(2) : 'N/A'}
-                                            </p>
-                                            <button
-                                                onClick={() => buyStock(index)}
-                                                className="btn btn-success me-2"
-                                                disabled={loading}
-                                            >
-                                                Buy
-                                            </button>
+                            {Array.isArray(marketData) && marketData.length > 0 ? (
+                                marketData.map((coin, index) => (
+                                    <div key={index} className="col-md-4 mb-3">
+                                        <div className="card">
+                                            <div className="card-body">
+                                                <h2 className="card-title">{coin.symbol}</h2>
+                                                <p className="card-text">
+                                                    Price: ${coin.price ? coin.price.toFixed(2) : 'N/A'}
+                                                </p>
+                                                <button
+                                                    onClick={() => buyStock(index)}
+                                                    className="btn btn-success me-2"
+                                                    disabled={loading}
+                                                >
+                                                    Buy
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))
+                            ) : (
+                                <p>No market data available.</p>
+                            )}
                         </div>
                     )}
 
@@ -269,13 +342,22 @@ const App = () => {
                     {!portfolio || portfolio.length === 0 ? (
                         <p>No tokens in your portfolio.</p>
                     ) : (
-                        <ul>
-                            {portfolio.map((token, index) => (
-                                <li key={index}>
-                                    {token.symbol}: {token.amount}
-                                </li>
-                            ))}
-                        </ul>
+                        <table className="table">
+                            <thead>
+                                <tr>
+                                    <th>Token</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {portfolio.map((token, index) => (
+                                    <tr key={index}>
+                                        <td>{token.symbol}</td>
+                                        <td>{token.amount}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     )}
                 </>
             )}

@@ -4,8 +4,12 @@ module mock_coins_addr::user_portfolio {
     use aptos_framework::account;
     use aptos_framework::timestamp;
     use std::vector;
+    use std::string;
+    use std::option;
 
-    /// Represents a single coin holding in the portfolio
+    const E_INSUFFICIENT_BALANCE: u64 = 1001;
+    const E_COIN_NOT_FOUND: u64 = 1002;
+
     struct CoinData has copy, drop, store {
         symbol: vector<u8>,
         amount: u128,
@@ -114,4 +118,61 @@ module mock_coins_addr::user_portfolio {
         let portfolio = borrow_global<Portfolio>(account_addr);
         *&portfolio.coins
     }
+
+    public fun reduce_coin_in_portfolio(account: &signer, symbol: vector<u8>, amount: u128) acquires Portfolio {
+    let user_addr = signer::address_of(account);
+    let portfolio = borrow_global_mut<Portfolio>(user_addr);
+
+    let i = 0;
+    let len = vector::length(&portfolio.coins);
+    while (i < len) {
+        let coin = vector::borrow_mut(&mut portfolio.coins, i);
+        if (vectors_equal(&coin.symbol, &symbol)) {
+            assert!(coin.amount >= amount, E_INSUFFICIENT_BALANCE);
+            coin.amount = coin.amount - amount;
+            break;
+        };
+        i = i + 1;
+    }
+}
+
+
+public entry fun modify_portfolio(account: &signer, symbol: vector<u8>, amount: u128) acquires Portfolio {
+    let user_addr = signer::address_of(account);
+    let portfolio = borrow_global_mut<Portfolio>(user_addr);
+
+    let i = 0;
+    let len = vector::length(&portfolio.coins);
+
+    while (i < len) {
+        let coin = vector::borrow_mut(&mut portfolio.coins, i);
+        if (vectors_equal(&coin.symbol, &symbol)) {
+            coin.amount = coin.amount + amount;
+            return;
+        };
+        i = i + 1;
+    };
+
+    vector::push_back(&mut portfolio.coins, CoinData { symbol, amount });
+}
+
+
+
+// Helper function to check if two vectors are equal
+public fun vectors_equal(v1: &vector<u8>, v2: &vector<u8>): bool {
+    if (vector::length(v1) != vector::length(v2)) {
+        return false;
+    };
+    
+    let len = vector::length(v1);
+    let i = 0;
+    
+    while (i < len) {
+        if (vector::borrow(v1, i) != vector::borrow(v2, i)) {
+            return false;
+        };
+        i = i + 1;
+    };
+    true
+}
 }

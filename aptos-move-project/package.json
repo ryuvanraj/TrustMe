@@ -15,15 +15,11 @@
   "dependencies": {
     "aptos": "^1.21.0",
     "cors": "^2.8.5",
-<<<<<<< HEAD:aptos-move-project/package.json
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
     "path": "^0.12.7",
     "react-refresh": "^0.16.0",
     "url": "^0.11.4"
-=======
-    "express": "^4.21.2",
-    "server": "file:"
->>>>>>> c1ffdd98425cbd567b844cf7b0f4917763c8f669:split_funds_project/server/package.json
   }
 }

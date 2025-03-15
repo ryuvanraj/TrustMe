@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { execSync } = require('child_process');
-const { AptosClient } = require('aptos');
-
+const { AptosClient, AptosAccount, HexString, TransactionBuilder, Types } = require('aptos');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -110,8 +110,19 @@ async function getAptosPrice() {
     }
 }
 
-// Execute buy transaction with proper authentication
-async function executeBuyTransaction(walletAddress, coinIndex, amountInUSD) {
+// Modified transaction function to generate unsigned transaction
+async function generateTransaction(walletAddress, payload) {
+    try {
+        const pendingTxn = await client.generateTransaction(walletAddress, payload);
+        return pendingTxn;
+    } catch (error) {
+        console.error('Error generating transaction:', error);
+        throw error;
+    }
+}
+
+// Modify executeBuyTransaction function to return the transaction
+async function prepareBuyTransaction(walletAddress, coinIndex, amountInUSD) {
     try {
         // Get current APT price
         const aptPrice = await getAptosPrice();
@@ -133,22 +144,37 @@ async function executeBuyTransaction(walletAddress, coinIndex, amountInUSD) {
         // Calculate APT amount needed
         const aptAmount = parseFloat(amountInUSD) / aptPrice;
 
+        // Log the coin index and the transaction details
+        console.log("Coin index:", coinIndex);  // Log coinIndex
+        console.log("Selected coin:", coin);  // Log the selected coin
+        console.log("Transaction payload:", {
+            function: `${contractAddress}::${moduleName}::buy_coin`,
+            type_arguments: [],
+            arguments: [
+                coinIndex, // Coin index
+                scaledCoins.toString() // Scaled coins
+            ],
+            type: "entry_function_payload"
+        });  // Log the payload
+        
         // Create proper transaction payload
         const payload = {
             function: `${contractAddress}::${moduleName}::buy_coin`,
             type_arguments: [],
             arguments: [
-                parseInt(coinIndex),
-                scaledCoins.toString()
+                parseInt(coinIndex),  // coinIndex as integer
+                scaledCoins.toString()  // scaledCoins as string to match the expected type
             ],
             type: "entry_function_payload"
         };
 
-        // Return payload for wallet to sign
+        // Generate an unsigned transaction
+        const pendingTxn = await generateTransaction(walletAddress, payload);
+
+        // Return the transaction and metadata
         return {
-            Result: {
-                success: true,
-                payload: payload,  // Send payload instead of transaction
+            pendingTransaction: pendingTxn,
+            metadata: {
                 apt_amount: aptAmount.toFixed(8),
                 coin_amount: coinsToReceive.toFixed(6),
                 usd_amount: amountInUSD,
@@ -161,66 +187,97 @@ async function executeBuyTransaction(walletAddress, coinIndex, amountInUSD) {
     }
 }
 
-// Buy endpoint
-app.post('/buy', async (req, res) => {
-    const { coinIndex, amountInUSD, walletAddress } = req.body;
-
-    // Input validation
-    if (!walletAddress || walletAddress === '0' || !walletAddress.startsWith('0x')) {
-        return res.status(400).json({
-            success: false,
-            error: 'Invalid wallet address format'
-        });
+// Buy endpoint - modified to return unsigned transaction
+// Add this custom serializer at the top of your file after the imports
+const BigIntSerializer = {
+    replacer: (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString(); // Convert BigInt to string
+      }
+      return value;
+    },
+    
+    // Helper function to replace BigInt values with strings in an object
+    serializeObject: (obj) => {
+      return JSON.parse(JSON.stringify(obj, BigIntSerializer.replacer));
     }
-
-    if (!amountInUSD || isNaN(parseFloat(amountInUSD)) || parseFloat(amountInUSD) <= 0) {
-        return res.status(400).json({
-            success: false,
-            error: 'Invalid amount'
-        });
-    }
-
-    if (coinIndex === undefined || isNaN(parseInt(coinIndex))) {
-        return res.status(400).json({
-            success: false,
-            error: 'Invalid coin index'
-        });
-    }
-
-    try {
-        const marketData = await getMarketData();
-        if (!marketData || parseInt(coinIndex) >= marketData.length) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid coin index'
-            });
-        }
-
-        const result = await executeBuyTransaction(
-            walletAddress,
-            parseInt(coinIndex),
-            parseFloat(amountInUSD)
-        );
-
-        if (result.Result?.success) {
-            const coin = marketData[parseInt(coinIndex)];
-            return res.json({
-                success: true,
-                payload: result.Result.payload, // Include the payload here
-                metadata: {
-                    coin: coin.symbol,
-                    amountUSD: parseFloat(amountInUSD).toFixed(2),
-                    amountAPT: result.Result.apt_amount,
-                    coin_amount: result.Result.coin_amount,
-                    coin_symbol: result.Result.coin_symbol
-                }
-            });
-        }
-
+  };
+  
+  // Then modify your /buy endpoint to use this serializer
+  app.post('/buy', async (req, res) => {
+      const { coinIndex, amountInUSD, walletAddress } = req.body;
+  
+      // Input validation
+      if (!walletAddress || walletAddress === '0' || !walletAddress.startsWith('0x')) {
+          return res.status(400).json({
+              success: false,
+              error: 'Invalid wallet address format'
+          });
+      }
+  
+      if (!amountInUSD || isNaN(parseFloat(amountInUSD)) || parseFloat(amountInUSD) <= 0) {
+          return res.status(400).json({
+              success: false,
+              error: 'Invalid amount'
+          });
+      }
+  
+      if (coinIndex === undefined || isNaN(parseInt(coinIndex))) {
+          return res.status(400).json({
+              success: false,
+              error: 'Invalid coin index'
+          });
+      }
+  
+      try {
+          const marketData = await getMarketData();
+          console.log("Market data:", marketData);
+          
+          if (!marketData || parseInt(coinIndex) >= marketData.length) {
+              return res.status(400).json({
+                  success: false,
+                  error: 'Invalid coin index'
+              });
+          }
+  
+          const result = await prepareBuyTransaction(
+              walletAddress,
+              parseInt(coinIndex),
+              parseFloat(amountInUSD)
+          );
+  
+          if (result && result.pendingTransaction) {
+              const coin = marketData[parseInt(coinIndex)];
+              
+              // Serialize the pending transaction to handle BigInt values
+              const serializedTxn = BigIntSerializer.serializeObject(result.pendingTransaction);
+              
+              return res.json({
+                  success: true,
+                  pendingTransaction: serializedTxn,
+                  metadata: {
+                      coin: coin.symbol,
+                      amountUSD: parseFloat(amountInUSD).toFixed(2),
+                      amountAPT: result.metadata.apt_amount,
+                      coin_amount: result.metadata.coin_amount,
+                      coin_symbol: result.metadata.coin_symbol
+                  }
+              });
+          }
+  
+          throw new Error('Failed to generate transaction');
+      } catch (error) {
+          console.error('Buy error:', error);
+          
+          res.status(500).json({
+              success: false,
+              error: error.message || 'Transaction failed'
+          });
+      }
+  });
 
 // Portfolio endpoint
 app.get('/portfolio', async (req, res) => {
-
     const { walletAddress } = req.query;
     
     if (!walletAddress) {
@@ -249,7 +306,6 @@ app.get('/portfolio', async (req, res) => {
 app.get('/market-data', async (req, res) => {
     try {
         const marketData = await getMarketData();
-
         res.json({ success: true, data: marketData });
     } catch (error) {
         res.status(500).json({
