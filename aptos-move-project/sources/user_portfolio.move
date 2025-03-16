@@ -175,4 +175,28 @@ public fun vectors_equal(v1: &vector<u8>, v2: &vector<u8>): bool {
     };
     true
 }
+public fun reduce_coin_in_portfolio_v2(
+    account_addr: address, 
+    symbol: vector<u8>, 
+    amount: u128
+) acquires Portfolio {
+    assert!(exists<Portfolio>(account_addr), E_PORTFOLIO_NOT_FOUND);
+    let portfolio = borrow_global_mut<Portfolio>(account_addr);
+
+    let i = 0;
+    let len = vector::length(&portfolio.coins);
+
+    while (i < len) {
+        let coin = vector::borrow_mut(&mut portfolio.coins, i);
+        if (vectors_equal(&coin.symbol, &symbol)) {
+            assert!(coin.amount >= amount, E_INSUFFICIENT_BALANCE);
+            coin.amount = coin.amount - amount;
+            return; // Exit after reducing
+        };
+        i = i + 1;
+    };
+
+    abort E_COIN_NOT_FOUND; // If the symbol is not found
+}
+
 }

@@ -327,4 +327,113 @@ public entry fun sell_coin_v2(account: &signer, symbol: vector<u8>, amount: u128
     assert!(coin_found, E_MARKET_NOT_INITIALIZED);
 }
 
+public entry fun sell_coin_v3(
+    account: &signer, 
+    symbol: vector<u8>, 
+    amount: u128, 
+    recipient: address
+) acquires Market{
+    let seller_address = signer::address_of(account);
+    let market = borrow_global_mut<Market>(seller_address);
+    let coin_found = false;
+    let i = 0;
+    let len = vector::length(&market.coins);
+
+    // Loop through the market coins to find the specified coin
+    while (i < len) {
+        let coin = vector::borrow_mut(&mut market.coins, i);
+
+        if (vectors_equal(&coin.symbol, &symbol)) {
+            coin_found = true;
+
+            // Ensure there's enough balance in the market
+            assert!(coin.fixed_cap >= (amount as u64), E_INSUFFICIENT_COINS);
+            coin.fixed_cap = coin.fixed_cap - (amount as u64);
+
+            // Reduce the recipient's portfolio coins
+            user_portfolio::reduce_coin_in_portfolio_v2(
+                recipient, // The recipient's address
+                symbol,
+                amount
+            );
+
+            // Add the coins to the seller's portfolio
+            user_portfolio::add_to_portfolio(account, symbol, amount);
+
+            // Emit the price update event
+            event::emit_event(
+                &mut market.price_events,
+                MarketPriceUpdatedEvent {
+                    symbol,
+                    new_price: coin.current_value,
+                    timestamp: timestamp::now_microseconds(),
+                }
+            );
+
+            return; // Exit after processing
+        };
+        i = i + 1;
+    };
+
+    // If the coin is not found, throw an error
+    assert!(coin_found, E_MARKET_NOT_INITIALIZED);
+}
+public entry fun sell_coin_v4(
+    account: &signer, 
+    symbol: vector<u8>, 
+    amount: u128, 
+    recipient: address
+) acquires Market {
+    let seller_address = signer::address_of(account);
+    let market = borrow_global_mut<Market>(seller_address);
+    let coin_found = false;
+    let i = 0;
+    let len = vector::length(&market.coins);
+
+    // Loop through the market coins to find the specified coin
+    while (i < len) {
+        let coin = vector::borrow_mut(&mut market.coins, i);
+
+        if (vectors_equal(&coin.symbol, &symbol)) {
+            coin_found = true;
+
+            // Ensure there's enough balance in the market
+            assert!(coin.fixed_cap >= (amount as u64), E_INSUFFICIENT_COINS);
+            coin.fixed_cap = coin.fixed_cap - (amount as u64);
+
+            // **APT Transfer Logic Added Here**
+            coin::transfer<AptosCoin>(
+                account,     // The seller who is executing this transaction
+                recipient,   // The recipient (buyer) of the APT tokens
+                amount as u64 // The APT amount to transfer
+            );
+
+            // Modify recipient portfolio
+            user_portfolio::reduce_coin_in_portfolio_v2(
+                recipient,   // Reduce coins from the recipient's portfolio
+                symbol,
+                amount
+            );
+
+            // Modify seller portfolio
+            user_portfolio::add_to_portfolio(account, symbol, amount);
+
+            // Emit the price update event
+            event::emit_event(
+                &mut market.price_events,
+                MarketPriceUpdatedEvent {
+                    symbol,
+                    new_price: coin.current_value,
+                    timestamp: timestamp::now_microseconds(),
+                }
+            );
+
+            return; // Exit after processing
+        };
+        i = i + 1;
+    };
+
+    // If the coin is not found, throw an error
+    assert!(coin_found, E_MARKET_NOT_INITIALIZED);
+}
 }

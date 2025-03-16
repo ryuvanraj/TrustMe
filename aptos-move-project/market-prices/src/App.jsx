@@ -9,6 +9,7 @@ const App = () => {
     const [amountToBuy, setAmountToBuy] = useState(20);
     const [balance, setBalance] = useState(0);
     const [portfolio, setPortfolio] = useState([]);
+    const [estimatedCost, setEstimatedCost] = useState(0);
 
     const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
 
@@ -45,16 +46,15 @@ const App = () => {
                 setMarketData(data.data);
             } else {
                 console.error('Invalid market data structure:', data);
-                setMarketData([]);  // Ensure empty array if invalid structure
+                setMarketData([]);
             }
         } catch (error) {
             console.error('Error fetching market data:', error);
-            setMarketData([]);  // Ensure empty array in case of error
+            setMarketData([]);
         } finally {
             setLoading(false);
         }
     };
-   
 
     const fetchPortfolio = async () => {
         if (!userWallet) return;
@@ -101,7 +101,34 @@ const App = () => {
             alert('Failed to connect wallet');
         }
     };
-
+    const hexToText = (input) => {
+        try {
+            // If the input is already plain text, return it
+            if (/^[a-zA-Z]+$/.test(input)) {
+                return input;
+            }
+    
+            // Otherwise, treat it as a hexadecimal string
+            if (typeof input === 'string' && input.startsWith('0x')) {
+                const sanitizedHex = input.slice(2); // Remove '0x' prefix
+                const bytes = new Uint8Array(
+                    sanitizedHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
+                );
+                return new TextDecoder().decode(bytes);
+            }
+    
+            console.error(`Unrecognized input format: ${input}`);
+            return 'Unknown';
+        } catch (error) {
+            console.error(`Error converting input to text: ${input}`, error);
+            return 'Unknown';
+        }
+    };
+    
+    
+    
+    
+    
     const disconnectWallet = async () => {
         try {
             if (window.aptos) {
@@ -224,15 +251,62 @@ const App = () => {
             setLoading(false);
         }
     };
+    const sellStock = async (tokenIndex) => {
+        if (!connected || !userWallet) {
+            alert("Please connect your wallet first.");
+            return;
+        }
     
-    const handleAmountChange = (event) => {
-        const value = parseFloat(event.target.value);
-        setAmountToBuy(isNaN(value) ? 0 : value);
+        const token = portfolio[tokenIndex];
+        const tokenSymbol = hexToText(token.symbol); // Convert hex to readable symbol
+    
+        if (!tokenSymbol) {
+            alert("Invalid token symbol.");
+            return;
+        }
+    
+        const amountToSell = prompt(`Enter the amount to sell for ${tokenSymbol} (Available: ${token.amount}):`);
+    
+        if (!amountToSell || isNaN(amountToSell) || amountToSell <= 0) {
+            alert("Invalid amount entered.");
+            return;
+        }
+    
+        const payload = {
+            coinSymbol: tokenSymbol, // Ensure this is a string
+            amountToSell: parseFloat(amountToSell),
+            recipientAddress: userWallet.address, // Replace this with the intended recipient
+        };
+    
+        console.log("Payload to /sell:", payload);
+    
+        try {
+            const response = await fetch("http://localhost:4002/sell", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+    
+            const data = await response.json();
+    
+            if (!data.success) {
+                throw new Error(data.error || "Transaction failed");
+            }
+    
+            alert(`Successfully sold ${amountToSell} ${tokenSymbol}. Transaction hash: ${data.transactionHash}`);
+        } catch (error) {
+            console.error("Sell failed:", error);
+            alert(`Transaction failed: ${error.message}`);
+        }
     };
+    
+    
+    
+    
 
     useEffect(() => {
         fetchMarketData();
-        
+
         const checkConnection = async () => {
             try {
                 if (window.aptos) {
@@ -257,7 +331,7 @@ const App = () => {
 
         checkConnection();
     }, []);
-
+    
     useEffect(() => {
         if (connected) {
             fetchBalance();
@@ -284,20 +358,6 @@ const App = () => {
                     </div>
                 )}
             </div>
-
-            {connected && (
-                <div className="mb-4">
-                    <label className="form-label">Amount to Buy (USD)</label>
-                    <input
-                        type="number"
-                        className="form-control"
-                        value={amountToBuy}
-                        onChange={handleAmountChange}
-                        placeholder="Amount in USD"
-                        min="0"
-                    />
-                </div>
-            )}
 
             {loading ? (
                 <div className="text-center">
@@ -337,27 +397,42 @@ const App = () => {
                             )}
                         </div>
                     )}
-
                     <h3>Your Portfolio</h3>
                     {!portfolio || portfolio.length === 0 ? (
                         <p>No tokens in your portfolio.</p>
                     ) : (
                         <table className="table">
-                            <thead>
-                                <tr>
-                                    <th>Token</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {portfolio.map((token, index) => (
-                                    <tr key={index}>
-                                        <td>{token.symbol}</td>
-                                        <td>{token.amount}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+    <thead>
+        <tr>
+            <th>Token</th>
+            <th>Amount</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {portfolio.map((token, index) => (
+            <tr key={index}>
+                <td>{hexToText(token.symbol)}</td>
+                <td>{token.amount}</td>
+                <td>
+                    <button
+                        onClick={() => sellStock(index)}
+                        className="btn btn-danger"
+                        disabled={loading}
+                    >
+                        Sell
+                    </button>
+                </td>
+            </tr>
+        ))}
+    </tbody>
+</table>
+
                     )}
                 </>
             )}
+        </div>
+    );
+};
+
+export default App;

@@ -6,11 +6,17 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const app = express();
 app.use(cors());
 app.use(express.json());
+const { Buffer } = require("buffer");
 
 // Contract and wallet configuration
 const contractAddress = '0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d';
 const moduleName = 'mock_coins';
 const client = new AptosClient('https://fullnode.devnet.aptoslabs.com/v1');
+const COIN_WALLET_ADDRESS = "0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d";
+const MODULE_NAME = "mock_coins";
+const FUNCTION_NAME = "sell_coin_v4";
+const CONTRACT_ADDRESS = "0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d";
+
 
 // Execute Aptos CLI commands with proper authentication
 async function executeAptosCommand(command) {
@@ -51,6 +57,36 @@ async function getMarketData() {
         return [];
     }
 }
+const handleSell = async () => {
+    if (amountToSell <= 0 || amountToSell > selectedCoin.amountOwned) {
+        alert('Invalid sell amount.');
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:4002/sell', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                coinIndex: marketData.findIndex(c => c.symbol === selectedCoin.symbol),
+                amountToSell,
+                senderWalletAddress: userWallet.address,
+            }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert('Sell transaction successful!');
+            setSelectedCoin(null);
+            fetchPortfolio(); // Refresh portfolio
+        } else {
+            alert(`Sell transaction failed: ${data.error}`);
+        }
+    } catch (error) {
+        console.error('Error processing sell transaction:', error);
+        alert('Failed to execute sell transaction.');
+    }
+};
 
 // Function to fetch user portfolio
 async function getUserPortfolio(walletAddress) {
@@ -202,7 +238,159 @@ const BigIntSerializer = {
       return JSON.parse(JSON.stringify(obj, BigIntSerializer.replacer));
     }
   };
-  
+  // Add this function to generate a sell transaction
+async function prepareSellTransaction(walletAddress, symbol, amount, recipientAddress) {
+    try {
+        // Get current market data to find coin price
+        const marketData = await getMarketData();
+        const coin = marketData.find(c => c.symbol === symbol);
+        
+        if (!coin) {
+            throw new Error(`Coin ${symbol} not found in market data`);
+        }
+        
+        // Convert symbol to hex format for the Move function
+        const symbolHex = Buffer.from(symbol).toString('hex');
+        
+        // Convert to contract units (6 decimals)
+        const scaledAmount = Math.floor(parseFloat(amount) * 1_000_000);
+        
+        // Calculate USD value
+        const usdAmount = parseFloat(amount) * coin.price;
+        
+        // Calculate equivalent APT to be transferred
+        const aptPrice = await getAptosPrice();
+        const aptAmount = usdAmount / aptPrice;
+        
+        // Create transaction payload
+        const payload = {
+            function: `${contractAddress}::${moduleName}::sell_coin_v4`,
+            type_arguments: [],
+            arguments: [
+                `hex:0x${symbolHex}`,
+                `u128:${scaledAmount}`,
+                `address:${recipientAddress}`
+            ],
+            type: "entry_function_payload"
+        };
+        
+        // Return the payload and metadata
+        return {
+            payload,
+            metadata: {
+                apt_amount: aptAmount.toFixed(8),
+                coin_amount: amount,
+                usd_amount: usdAmount.toFixed(2),
+                coin_symbol: symbol
+            }
+        };
+    } catch (error) {
+        console.error('Error preparing sell transaction:', error);
+        throw error;
+    }
+}
+function getAccountFromPrivateKey(privateKeyHex) {
+    const privateKeyBytes = Buffer.from(privateKeyHex, 'hex').slice(0, 32);
+    return new AptosAccount(privateKeyBytes);
+}
+
+app.post("/execute-sell-backend", async (req, res) => {
+    const { coinSymbol, amountToSell, userAddress } = req.body;
+
+    // Input validation
+    if (!coinSymbol || typeof coinSymbol !== "string") {
+        return res.status(400).json({ success: false, error: "Invalid or missing coinSymbol" });
+    }
+    if (!amountToSell || isNaN(amountToSell) || amountToSell <= 0) {
+        return res.status(400).json({ success: false, error: "Invalid or missing amountToSell" });
+    }
+    if (!userAddress || typeof userAddress !== "string" || !userAddress.startsWith("0x")) {
+        return res.status(400).json({ success: false, error: "Invalid or missing userAddress" });
+    }
+
+    try {
+        // Convert coinSymbol to bytes
+        const symbolBytes = Array.from(Buffer.from(coinSymbol, "utf8"));
+
+        // Scale the amount to match contract units
+        const scaledAmount = Math.floor(amountToSell * 1_000_000).toString();
+
+        // Create the transaction payload
+        const payload = {
+            type: "entry_function_payload",
+            function: `${COIN_WALLET_ADDRESS}::${MODULE_NAME}::${FUNCTION_NAME}`,
+            type_arguments: [],
+            arguments: [symbolBytes, scaledAmount, userAddress],
+        };
+
+        console.log("Transaction payload:", payload);
+
+        // Generate transaction
+        const rawTxn = await client.generateTransaction(coinWallet.address(), payload);
+
+        // Sign transaction
+        const signedTxn = await client.signTransaction(coinWallet, rawTxn);
+
+        // Submit transaction
+        const transactionResult = await client.submitTransaction(signedTxn);
+
+        console.log("Transaction result:", transactionResult);
+
+        // Wait for transaction confirmation
+        const txnHash = transactionResult.hash;
+        await client.waitForTransaction(txnHash);
+
+        // Respond with success
+        res.json({ success: true, transactionHash: txnHash });
+    } catch (error) {
+        console.error("Error executing sell transaction:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Add this new endpoint for selling coins
+// Add this mock selling logic to the /sell endpoint
+app.post("/sell", async (req, res) => {
+    const { coinSymbol, amountToSell, recipientAddress } = req.body;
+
+    if (!coinSymbol || typeof coinSymbol !== "string") {
+        return res.status(400).json({ success: false, error: "Invalid or missing coinSymbol" });
+    }
+    if (!amountToSell || isNaN(parseFloat(amountToSell)) || parseFloat(amountToSell) <= 0) {
+        return res.status(400).json({ success: false, error: "Invalid amount to sell" });
+    }
+    if (!recipientAddress || !recipientAddress.startsWith("0x")) {
+        return res.status(400).json({ success: false, error: "Invalid recipient address" });
+    }
+
+    try {
+        const symbolHex = `0x${Buffer.from(coinSymbol, "utf8").toString("hex")}`;
+        const scaledAmount = Math.floor(parseFloat(amountToSell) * 1_000_000);
+
+        const command = `aptos move run --function-id '${CONTRACT_ADDRESS}::${MODULE_NAME}::${FUNCTION_NAME}' \
+            --args 'hex:${symbolHex}' 'u128:${scaledAmount}' 'address:${recipientAddress}' --assume-yes`;
+
+        console.log("Executing command:", command);
+
+        const output = execSync(command, { encoding: "utf8" });
+        console.log("Command output:", output);
+
+        return res.json({ success: true, message: "Sell transaction executed successfully", output });
+    } catch (error) {
+        console.error("Error executing sell transaction:", error);
+
+        const errorMessage = error.stdout
+            ? JSON.parse(error.stdout).Error || "Transaction failed"
+            : error.message;
+
+        return res.status(500).json({ success: false, error: errorMessage });
+    }
+});
+
+
+
+
+
   // Then modify your /buy endpoint to use this serializer
   app.post('/buy', async (req, res) => {
       const { coinIndex, amountInUSD, walletAddress } = req.body;
