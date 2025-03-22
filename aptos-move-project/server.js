@@ -77,7 +77,7 @@ setInterval(updateAndFetchMarketData, 20000);
 updateAndFetchMarketData();
 
 // Start the server
-const PORT = 4001; // Using a different port for update server
+const PORT = 4003; // Using a different port for update server
 app.listen(PORT, () => {
     console.log(`Market data server running on http://localhost:${PORT}`);
 });

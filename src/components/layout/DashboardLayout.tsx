@@ -1,4 +1,5 @@
-import React, { ReactNode, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { ReactNode, useEffect, useState } from "react";
 import {
   Search,
   Bell,
@@ -13,13 +14,19 @@ import {
 import { Button } from "@/components/ui-components/Button";
 import { AptosClient } from "aptos";
 
+declare global {
+  interface Window {
+    aptos?: any;
+  }
+}
 interface DashboardLayoutProps {
   children: ReactNode;
+  walletAddress?: string;
 }
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+  const [walletAddress, setWalletAddress] = useState<string>("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [userWallet, setUserWallet] = useState(null);
   const [connected, setConnected] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -30,28 +37,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
 
-  const connectWallet = async () => {
-    try {
-      if (!window.aptos) {
-        alert("Petra Wallet not installed! Please install it to proceed.");
-        return;
+  useEffect(() => {
+    const fetchWallet = async () => {
+      if (window.aptos) {
+        try {
+          const response = await window.aptos.connect(); // Connects to Petra
+          setWalletAddress(response.address); // Stores the wallet address
+        } catch (error) {
+          console.error("Failed to connect to Petra:", error);
+        }
+      } else {
+        console.error("Petra Wallet not installed.");
       }
+    };
 
-      const wallet = window.aptos;
-      const response = await wallet.connect();
-      const account = {
-        address: response.address,
-        publicKey: response.publicKey,
-      };
+    fetchWallet();
+  }, []);
 
-      setUserWallet(account);
-      setConnected(true);
-      console.log("Wallet Connected:", account);
-    } catch (error) {
-      console.error("Error connecting wallet:", error);
-      alert("Failed to connect wallet");
-    }
-  };
 
   const handleLogout = () => {
     setWalletAddress(null);
@@ -59,6 +61,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     setUserWallet(null);
     alert("Logged out successfully.");
   };
+
+  function connectWallet(event: React.MouseEvent<HTMLButtonElement>): void {
+    throw new Error("Function not implemented.");
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -212,7 +218,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       
       {/* Main content */}
       <main className="flex-1 overflow-hidden">
-        {children}
+        {React.Children.map(children, (child: React.ReactElement<{ walletAddress?: string }>) => {
+          if (React.isValidElement(child)) {
+            return React.cloneElement(child, { walletAddress });
+          }
+          return child;
+        })}
       </main>
       
       <footer className="border-t py-4 text-center text-sm text-muted-foreground">

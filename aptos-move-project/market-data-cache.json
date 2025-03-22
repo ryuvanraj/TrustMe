@@ -1,0 +1,30 @@
+{
+  "stocks": {
+    "AAPL": {
+      "exact": 218.27,
+      "aptos": 2
+    },
+    "GOOGL": {
+      "exact": 163.99,
+      "aptos": 1
+    },
+    "AMZN": {
+      "exact": 196.21,
+      "aptos": 1
+    }
+  },
+  "cryptos": {
+    "BTC-USD": {
+      "exact": 84196,
+      "aptos": 8
+    },
+    "ETH-USD": {
+      "exact": 1995.13,
+      "aptos": 1
+    },
+    "ADA-USD": {
+      "exact": 0.707094,
+      "aptos": 0
+    }
+  }
+}
