@@ -1,7 +1,17 @@
-import React, { ReactNode } from 'react';
-import { Search, Bell, User, Settings, LogOut, Menu, X, Briefcase, TrendingUp } from 'lucide-react';
-import { Button } from '@/components/ui-components/Button';
-import { useState } from 'react';
+import React, { ReactNode, useState } from "react";
+import {
+  Search,
+  Bell,
+  User,
+  Settings,
+  LogOut,
+  Menu,
+  X,
+  Briefcase,
+  TrendingUp,
+} from "lucide-react";
+import { Button } from "@/components/ui-components/Button";
+import { AptosClient } from "aptos";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -9,11 +19,47 @@ interface DashboardLayoutProps {
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [userWallet, setUserWallet] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
+
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
-  
+
+  const connectWallet = async () => {
+    try {
+      if (!window.aptos) {
+        alert("Petra Wallet not installed! Please install it to proceed.");
+        return;
+      }
+
+      const wallet = window.aptos;
+      const response = await wallet.connect();
+      const account = {
+        address: response.address,
+        publicKey: response.publicKey,
+      };
+
+      setUserWallet(account);
+      setConnected(true);
+      console.log("Wallet Connected:", account);
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      alert("Failed to connect wallet");
+    }
+  };
+
+  const handleLogout = () => {
+    setWalletAddress(null);
+    setConnected(false);
+    setUserWallet(null);
+    alert("Logged out successfully.");
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -27,7 +73,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             >
               {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            
+
             {/* Logo */}
             <div className="flex items-center space-x-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
@@ -39,7 +85,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <span className="hidden text-xl font-bold sm:inline-block">Trust me</span>
             </div>
           </div>
-          
+
           {/* Search */}
           <div className="hidden flex-1 items-center px-8 lg:flex">
             <div className="relative w-full max-w-md">
@@ -53,25 +99,51 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               />
             </div>
           </div>
-          
+
           {/* Actions */}
           <div className="flex items-center space-x-3">
             <button className="rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
               <Bell className="h-5 w-5" />
             </button>
-            
-            <button className="rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground">
-              <Settings className="h-5 w-5" />
-            </button>
-            
-            <div className="ml-2 flex items-center space-x-2">
-              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10">
+
+            <div className="relative">
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10"
+                onClick={() => setIsUserMenuOpen((prev) => !prev)}
+              >
                 <User className="h-5 w-5 text-primary" />
-              </div>
+              </button>
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-md bg-white shadow-lg z-50">
+                  <div className="p-2">
+                    {connected ? (
+                      <>
+                        <p className="truncate text-sm text-gray-700">
+                          {userWallet?.address}
+                        </p>
+                        <button
+                          className="mt-2 w-full rounded-md bg-red-500 py-2 text-white hover:bg-red-600"
+                          onClick={handleLogout}
+                        >
+                          Logout
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="w-full rounded-md bg-blue-500 py-2 text-white hover:bg-blue-600"
+                        onClick={connectWallet}
+                      >
+                        Connect Wallet
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </header>
+
       
       {/* Mobile menu */}
       {isMobileMenuOpen && (
