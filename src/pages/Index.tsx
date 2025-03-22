@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import Hero from '@/components/hero/Hero';
 import StockChart from '@/components/charts/StockChart';
@@ -8,19 +7,46 @@ import MarketStats from '@/components/stats/MarketStats';
 import ChatButton from '@/components/chat/ChatButton';
 
 const Index = () => {
-  function handleFilterChange(arg0: string, p0: string): void {
-    throw new Error('Function not implemented.');
-  }
   const [activeTab, setActiveTab] = useState("all");
+  const [assets, setAssets] = useState([]);
 
-  const assets = [
-    { type: "stock", symbol: "AAPL", name: "Apple Inc.", currentPrice: 184.92, change: 2.45, changePercentage: 1.34 },
-    { type: "stock", symbol: "GOOGL", name: "Google LLC", currentPrice: 824.18, change: 15.37, changePercentage: 1.9 },
-    { type: "stock", symbol: "AMZN", name: "Amazon.com, Inc.", currentPrice: 324.51, change: -23.45, changePercentage: -0.72 },
-    { type: "crypto", symbol: "BTC", name: "Bitcoin", currentPrice: 145.71, change: 13.48, changePercentage: 2.14 },
-    { type: "crypto", symbol: "ETH", name: "Ethereum", currentPrice: 213.58, change: -1.23, changePercentage: -0.57 },
-    { type: "crypto", symbol: "ADA", name: "Cardano", currentPrice: 1.23, change: 0.12, changePercentage: 0.98 },
-  ];
+  useEffect(() => {
+    // Function to fetch data from the backend
+    const fetchData = async () => {
+      try {
+        const response = await fetch('http://localhost:4001/market-data'); // Replace with your API endpoint
+        const data = await response.json();
+
+        // Transform the data into the format required by `assets`
+        const stocks = Object.entries(data.stocks).map(([symbol, price]) => ({
+          type: "stock",
+          symbol,
+          name: `${symbol} Stock`, // Replace with actual name if available
+          currentPrice: price,
+          change: Math.random() * 5 - 2.5, // Replace with actual change if available
+          changePercentage: (Math.random() * 2 - 1).toFixed(2), // Replace with actual percentage if available
+        }));
+
+        const cryptos = Object.entries(data.cryptos).map(([symbol, price]) => ({
+          type: "crypto",
+          symbol: symbol.split('-')[0], // Extract symbol from BTC-USD
+          name: `${symbol.split('-')[0]} Cryptocurrency`, // Replace with actual name if available
+          currentPrice: price,
+          change: Math.random() * 5 - 2.5, // Replace with actual change if available
+          changePercentage: (Math.random() * 2 - 1).toFixed(2), // Replace with actual percentage if available
+        }));
+
+        setAssets([...stocks, ...cryptos]);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchData();
+    const intervalId = setInterval(fetchData, 10000); // Fetch every 10 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   const filteredAssets = assets.filter((asset) => {
     if (activeTab === "all") return true;

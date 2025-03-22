@@ -13,7 +13,23 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui-compon
 import { Button } from "@/components/ui-components/Button";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-const timeFilters = [
+interface TimeFilter {
+  label: string;
+  value: string;
+}
+
+interface StockChartProps {
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  change: number;
+  changePercentage: number;
+  trend?: "up" | "down" | "volatile";
+  timeFilters?: TimeFilter[];
+  className?: string;
+}
+
+const defaultTimeFilters: TimeFilter[] = [
   { label: "1H", value: "1h" },
   { label: "1D", value: "1d" },
   { label: "1W", value: "1w" },
@@ -22,7 +38,7 @@ const timeFilters = [
 ];
 
 const fetchStockData = async (symbol: string, interval: string) => {
-  const apiKey = "cXfo8JJCnKvxpptPu9oHEdgDKqCR3l2p"; // Replace with your Polygon API key
+  const apiKey = "cXfo8JJCnKvxpptPu9oHEdgDKqCR3l2p"; // Replace with your API key
   const intervalMap: Record<string, { multiplier: number; timespan: string }> = {
     "1h": { multiplier: 1, timespan: "minute" },
     "1d": { multiplier: 5, timespan: "minute" },
@@ -34,35 +50,27 @@ const fetchStockData = async (symbol: string, interval: string) => {
   const { multiplier, timespan } = intervalMap[interval];
   const now = new Date();
   const endDate = now.toISOString().split("T")[0];
-  const startDate = new Date(now.setDate(now.getDate() - 30)).toISOString().split("T")[0]; // Adjust as needed
+  const startDate = new Date(now.setDate(now.getDate() - 30)).toISOString().split("T")[0];
 
   const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${multiplier}/${timespan}/${startDate}/${endDate}?adjusted=true&sort=asc&apiKey=${apiKey}`;
-  
+
   try {
     const response = await axios.get(url);
     const results = response.data.results || [];
 
-    const data = results.map((item: { t: number; o: number }) => ({
+    return results.map((item: { t: number; o: number }) => ({
       timestamp: new Date(item.t).toISOString(),
-      value: item.o, // Use open price
+      value: item.o,
     }));
-
-    return data;
   } catch (error) {
     console.error("Error fetching stock data:", error);
-    return [];
+    throw error;
   }
 };
 
-interface StockChartProps {
-  symbol: string;
-  name: string;
-  currentPrice: number;
-  change: number;
-  changePercentage: number;
-  trend?: "up" | "down" | "volatile";
-  className?: string;
-}
+const isValidNumber = (value: any): value is number => {
+  return typeof value === "number" && !isNaN(value);
+};
 
 const StockChart: React.FC<StockChartProps> = ({
   symbol,
@@ -71,19 +79,28 @@ const StockChart: React.FC<StockChartProps> = ({
   change,
   changePercentage,
   trend = "up",
+  timeFilters = defaultTimeFilters,
   className,
 }) => {
+  const percentage = isValidNumber(changePercentage) ? changePercentage : 0;
   const [activeFilter, setActiveFilter] = useState("1d");
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFilterChange = async (filter: string) => {
     setIsLoading(true);
+    setError(null);
     setActiveFilter(filter);
 
-    const stockData = await fetchStockData(symbol, filter);
-    setData(stockData);
-    setIsLoading(false);
+    try {
+      const stockData = await fetchStockData(symbol, filter);
+      setData(stockData);
+    } catch (error) {
+      setError("Failed to fetch stock data. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -113,20 +130,24 @@ const StockChart: React.FC<StockChartProps> = ({
             <span className="ml-2 text-sm text-muted-foreground">{name}</span>
           </div>
           <div className="mt-1 flex items-center">
-            <span className="text-2xl font-semibold">${currentPrice.toFixed(2)}</span>
-            <div className={`ml-2 flex items-center ${isPositive ? "text-finance-positive" : "text-finance-negative"}`}>
-              {isPositive ? (
-                <ArrowUpRight className="h-4 w-4" />
-              ) : (
-                <ArrowDownRight className="h-4 w-4" />
-              )}
-              <span className="ml-1 text-sm font-medium">
-                {isPositive ? "+" : ""}
-                {change.toFixed(2)} ({isPositive ? "+" : ""}
-                {changePercentage.toFixed(2)}%)
-              </span>
-            </div>
-          </div>
+        <span className="text-2xl font-semibold">${currentPrice.toFixed(2)}</span>
+        <div
+          className={`ml-2 flex items-center ${
+            change >= 0 ? "text-finance-positive" : "text-finance-negative"
+          }`}
+        >
+          {change >= 0 ? (
+            <ArrowUpRight className="h-4 w-4" />
+          ) : (
+            <ArrowDownRight className="h-4 w-4" />
+          )}
+          <span className="ml-1 text-sm font-medium">
+            {change >= 0 ? "+" : ""}
+            {change.toFixed(2)} ({change >= 0 ? "+" : ""}
+            {percentage.toFixed(2)}%)
+          </span>
+        </div>
+      </div>
         </div>
         <div className="flex space-x-1">
           {timeFilters.map((filter) => (
@@ -149,6 +170,8 @@ const StockChart: React.FC<StockChartProps> = ({
             <div className="flex h-full items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
             </div>
+          ) : error ? (
+            <div className="text-center text-red-500">{error}</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
@@ -194,7 +217,7 @@ const StockChart: React.FC<StockChartProps> = ({
                   fillOpacity={1}
                   fill={`url(#colorGradient-${symbol})`}
                   activeDot={{ r: 6, strokeWidth: 0 }}
-                  animationDuration={750}
+                  animationDuration={800}
                 />
               </AreaChart>
             </ResponsiveContainer>

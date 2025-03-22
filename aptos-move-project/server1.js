@@ -8,7 +8,7 @@ app.use(cors());
 
 const APTOS_CONTRACT = "0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d";
 const MODULE_NAME = "mock_coins";
-const ALPHA_VANTAGE_API_KEY = "HSDYXK8BTKVDLIM5"; // Replace with your actual API key
+const ALPHA_VANTAGE_API_KEY = "OV8BM9453TDXPF9E"; // Replace with your actual API key
 
 // Function to extract the *first integer* of a number
 const getFirstInteger = (num) => {
@@ -22,12 +22,12 @@ const fetchStockPrices = async (symbols) => {
     let stockData = {};
     
     for (const symbol of symbols) {
-      const url = ⁠ https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY} ⁠;
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`;
       const response = await fetch(url);
       const data = await response.json();
 
       if (!data["Global Quote"] || !data["Global Quote"]["05. price"]) {
-        console.error(⁠ Error fetching ${symbol} data: ⁠, data);
+        console.error(`Error fetching ${symbol} data:`, data);
         continue;
       }
 
@@ -69,10 +69,16 @@ const updateAptosPrices = async () => {
     const cryptos = await fetchCryptoPrices();
 
     console.log("\n📢 Frontend receives exact values:");
-    console.log(JSON.stringify({
-      stocks: Object.fromEntries(Object.entries(stocks).map(([k, v]) => [k, v.exact])),
-      cryptos: Object.fromEntries(Object.entries(cryptos).map(([k, v]) => [k, v.exact])),
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          stocks: Object.fromEntries(Object.entries(stocks).map(([k, v]) => [k, v.exact])),
+          cryptos: Object.fromEntries(Object.entries(cryptos).map(([k, v]) => [k, v.exact])),
+        },
+        null,
+        2
+      )
+    );
 
     if (Object.keys(stocks).length === 0) {
       console.error("⚠️ Error: Missing stock prices, skipping Aptos update");
@@ -84,10 +90,15 @@ const updateAptosPrices = async () => {
     }
 
     console.log("\n🔄 Aptos receives first-integer values:");
-    console.log(⁠ Stocks: AAPL=${stocks["AAPL"].aptos}, GOOGL=${stocks["GOOGL"].aptos}, AMZN=${stocks["AMZN"].aptos} ⁠);
-    console.log(⁠ Cryptos: BTC=${cryptos["BTC-USD"].aptos}, ETH=${cryptos["ETH-USD"].aptos}, ADA=${cryptos["ADA-USD"].aptos} ⁠);
+    console.log(
+      `Stocks: AAPL=${stocks["AAPL"].aptos}, GOOGL=${stocks["GOOGL"].aptos}, AMZN=${stocks["AMZN"].aptos}`
+    );
+    console.log(
+      `Cryptos: BTC=${cryptos["BTC-USD"].aptos}, ETH=${cryptos["ETH-USD"].aptos}, ADA=${cryptos["ADA-USD"].aptos}`
+    );
 
-    execSync(`aptos move run \
+    execSync(
+      `aptos move run \
         --function-id "${APTOS_CONTRACT}::${MODULE_NAME}::update_prices" \
         --args u128:${cryptos["BTC-USD"].aptos} u128:${cryptos["ETH-USD"].aptos} u128:${cryptos["ADA-USD"].aptos} \
         --assume-yes \
@@ -95,7 +106,8 @@ const updateAptosPrices = async () => {
       { stdio: "inherit" }
     );
 
-    execSync(`aptos move run \
+    execSync(
+      `aptos move run \
         --function-id "${APTOS_CONTRACT}::${MODULE_NAME}::update_stock_prices" \
         --args u128:${stocks["AAPL"].aptos} u128:${stocks["GOOGL"].aptos} u128:${stocks["AMZN"].aptos} \
         --assume-yes \
@@ -118,7 +130,6 @@ app.get("/market-data", async (req, res) => {
     res.json({
       stocks: Object.fromEntries(Object.entries(stocks).map(([k, v]) => [k, v.exact])),
       cryptos: Object.fromEntries(Object.entries(cryptos).map(([k, v]) => [k, v.exact])),
-
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch market data" });
@@ -126,11 +137,11 @@ app.get("/market-data", async (req, res) => {
 });
 
 // Update prices every 20 seconds
-setInterval(updateAptosPrices, 20000);
+setInterval(updateAptosPrices, 200000);
 updateAptosPrices();
 
 // Start server
 const PORT = 4001;
 app.listen(PORT, () => {
-  console.log(⁠ 🚀 Server running on http://localhost:${PORT} ⁠);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
