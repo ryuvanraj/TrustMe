@@ -156,7 +156,87 @@ public entry fun modify_portfolio(account: &signer, symbol: vector<u8>, amount: 
     vector::push_back(&mut portfolio.coins, CoinData { symbol, amount });
 }
 
+#[view]
+public fun get_stock_portfolio(account_addr: address): vector<CoinData> 
+acquires Portfolio {
+    if (!exists<Portfolio>(account_addr)) {
+        return vector::empty();
+    };
+    
+    let portfolio = borrow_global<Portfolio>(account_addr);
+    let stocks = vector::empty<CoinData>();
+    let i = 0;
+    let len = vector::length(&portfolio.coins);
+    
+    // Stock symbols we're looking for
+    let stock_symbols = vector[b"AAPL", b"GOOGL", b"AMZN"];
+    
+    while (i < len) {
+        let coin_data = vector::borrow(&portfolio.coins, i);
+        let j = 0;
+        let stock_len = vector::length(&stock_symbols);
+        
+        while (j < stock_len) {
+            if (vectors_equal(&coin_data.symbol, vector::borrow(&stock_symbols, j))) {
+                vector::push_back(&mut stocks, *coin_data);
+                break;
+            };
+            j = j + 1;
+        };
+        
+        i = i + 1;
+    };
+    
+    stocks
+}
 
+public entry fun view_stock_portfolio(account: &signer) acquires Portfolio, PortfolioEvents {
+    let user_addr = signer::address_of(account);
+    assert!(exists<Portfolio>(user_addr), E_PORTFOLIO_NOT_FOUND);
+    
+    let portfolio = borrow_global<Portfolio>(user_addr);
+    
+    if (!exists<PortfolioEvents>(user_addr)) {
+        move_to(account, PortfolioEvents { 
+            portfolio_events: account::new_event_handle(account)
+        });
+    };
+    
+    let events = borrow_global_mut<PortfolioEvents>(user_addr);
+    let i = 0;
+    let len = vector::length(&portfolio.coins);
+    
+    // Stock symbols we're looking for
+    let stock_symbols = vector[b"AAPL", b"GOOGL", b"AMZN"];
+    
+    while (i < len) {
+        let coin_data = vector::borrow(&portfolio.coins, i);
+        let j = 0;
+        let stock_len = vector::length(&stock_symbols);
+        let is_stock = false;
+        
+        while (j < stock_len) {
+            if (vectors_equal(&coin_data.symbol, vector::borrow(&stock_symbols, j))) {
+                is_stock = true;
+                break;
+            };
+            j = j + 1;
+        };
+        
+        if (is_stock) {
+            event::emit_event(
+                &mut events.portfolio_events,
+                PortfolioEvent {
+                    symbol: *&coin_data.symbol,
+                    amount: coin_data.amount,
+                    timestamp: timestamp::now_microseconds()
+                }
+            );
+        };
+        
+        i = i + 1;
+    };
+}
 
 // Helper function to check if two vectors are equal
 public fun vectors_equal(v1: &vector<u8>, v2: &vector<u8>): bool {

@@ -87,14 +87,68 @@ const handleSell = async () => {
         alert('Failed to execute sell transaction.');
     }
 };
+async function getUserStockPortfolio(walletAddress) {
+    try {
+        const command = `move view \
+            --function-id ${contractAddress}::user_portfolio::get_stock_portfolio \
+            --args address:${walletAddress}`;
+        
+        const result = await executeAptosCommand(command);
+        
+        if (result && result.Result && Array.isArray(result.Result[0])) {
+            return result.Result[0].map(stock => {
+                const symbol = Buffer.from(stock.symbol.replace('0x', ''), 'hex').toString('utf8');
+                // Fix decimal precision for price and quantity display
+                const rawQuantity = Number(stock.quantity);
+                const quantity = rawQuantity / 1_000_000; // Convert from contract units
+                const rawPrice = Number(stock.price);
+                const price = rawPrice / 1_000_000; // Convert from contract units
+                
+                return {
+                    symbol,
+                    quantity: quantity.toFixed(6), // Keep full precision
+                    price: price.toFixed(6),
+                    displayQuantity: quantity.toLocaleString('en-US', {
+                        minimumFractionDigits: 6,
+                        maximumFractionDigits: 6
+                    }),
+                    displayPrice: price.toLocaleString('en-US', {
+                        minimumFractionDigits: 6,
+                        maximumFractionDigits: 6
+                    }),
+                    value: (quantity * price).toFixed(6)
+                };
+            });
+        }
 
+        // Fallback to using client API if view function fails
+        const resources = await client.getAccountResources(walletAddress);
+        const stockPortfolioResource = resources.find(r => 
+            r.type === `${contractAddress}::user_portfolio::StockPortfolio`
+        );
+
+        if (stockPortfolioResource && stockPortfolioResource.data.stocks) {
+            return stockPortfolioResource.data.stocks.map(stock => ({
+                symbol: Buffer.from(stock.symbol).toString('utf8'),
+                quantity: Number(stock.quantity) / 1_000_000,
+                price: Number(stock.price) / 1_000_000,
+                value: (Number(stock.quantity) * Number(stock.price)) / 1_000_000_000_000
+            }));
+        }
+
+        return [];
+    } catch (error) {
+        console.error('Error fetching stock portfolio:', error);
+        return [];
+    }
+}
 // Function to fetch user portfolio
 async function getUserPortfolio(walletAddress) {
     try {
         const command = `move view \
             --function-id ${contractAddress}::user_portfolio::get_portfolio \
             --args address:${walletAddress}`;
-
+        
         const result = await executeAptosCommand(command);
         
         if (result && result.Result && Array.isArray(result.Result[0])) {
@@ -387,10 +441,134 @@ app.post("/sell", async (req, res) => {
     }
 });
 
+// Add this new function to prepare the stock-buying transaction
 
 
+// Add this new endpoint for buying stocks
+// Modify your /buy-stock endpoint to properly handle BigInt values
+app.post('/buy-stock', async (req, res) => {
+    const { stockIndex, amountInUSD, walletAddress } = req.body;
 
+    if (!walletAddress || !walletAddress.startsWith('0x')) {
+        return res.status(400).json({ success: false, error: 'Invalid wallet address' });
+    }
 
+    if (!amountInUSD || isNaN(parseFloat(amountInUSD)) || parseFloat(amountInUSD) <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid amount' });
+    }
+
+    if (stockIndex === undefined || isNaN(parseInt(stockIndex))) {
+        return res.status(400).json({ success: false, error: 'Invalid stock index' });
+    }
+
+    try {
+        // Convert amountInUSD to proper stock units
+        // If $1 = 1 stock in your design, and contract uses 1_000_000 as scaling factor
+        const stockAmount = parseFloat(amountInUSD); // Direct 1:1 conversion
+        // Scale for the contract's decimal precision (assuming 6 decimals)
+        const scaledAmount = Math.floor(stockAmount * 1_000_000);
+
+        const payload = {
+            function: `${contractAddress}::${moduleName}::buy_stock`,
+            type_arguments: [],
+            arguments: [parseInt(stockIndex), scaledAmount.toString()], 
+            type: 'entry_function_payload',
+        };
+
+        const rawTransaction = await client.generateTransaction(walletAddress, payload);
+        
+        // Use the BigIntSerializer to handle BigInt values
+        const serializedTxn = BigIntSerializer.serializeObject(rawTransaction);
+
+        res.json({ 
+            success: true, 
+            pendingTransaction: serializedTxn,
+            metadata: {
+                stockIndex: parseInt(stockIndex),
+                amountInUSD: parseFloat(amountInUSD).toFixed(2),
+                stockAmount: stockAmount.toFixed(6)
+            }
+        });
+    } catch (error) {
+        console.error('Error generating transaction:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+    // Stock portfolio endpoint
+app.get('/stock-portfolio', async (req, res) => {
+    const { walletAddress } = req.query;
+    
+    if (!walletAddress) {
+        return res.status(400).json({
+            success: false,
+            error: 'Wallet address is required'
+        });
+    }
+
+    try {
+        const stockPortfolioData = await getUserStockPortfolio(walletAddress);
+        res.json({
+            success: true,
+            data: stockPortfolioData
+        });
+    } catch (error) {
+        console.error('Stock Portfolio error:', error);
+        res.status(200).json({
+            success: true,
+            data: []
+        });
+    }
+});
+
+    // Add this new endpoint for selling stocks
+// Add this new endpoint for selling stocks
+// Endpoint for selling stocks
+app.post("/sell-stock", async (req, res) => {
+    const { stockSymbol, amountToSell, recipientAddress } = req.body;
+
+    // Validation
+    if (!stockSymbol || typeof stockSymbol !== "string") {
+        return res.status(400).json({ success: false, error: "Invalid or missing stockSymbol" });
+    }
+    if (!amountToSell || isNaN(parseFloat(amountToSell)) || parseFloat(amountToSell) <= 0) {
+        return res.status(400).json({ success: false, error: "Invalid amount to sell" });
+    }
+    if (!recipientAddress || !recipientAddress.startsWith("0x")) {
+        return res.status(400).json({ success: false, error: "Invalid recipient address" });
+    }
+
+    try {
+        // Scale the amount to match contract units (assuming 6 decimal places)
+        const scaledAmount = Math.floor(parseFloat(amountToSell) * 1_000_000);
+
+        // Use the correct function ID for selling stocks: sell_stock_v4
+        const command = `aptos move run --function-id '${CONTRACT_ADDRESS}::${MODULE_NAME}::sell_stock_v4' \
+            --args 'string:${stockSymbol}' 'u128:${scaledAmount}' 'address:${recipientAddress}' --assume-yes`;
+
+        console.log("Executing stock sell command:", command);
+
+        const output = execSync(command, { encoding: "utf8" });
+        console.log("Stock sell command output:", output);
+
+        return res.json({ success: true, message: "Sell stock transaction executed successfully", output });
+    } catch (error) {
+        console.error("Error executing sell stock transaction:", error);
+
+        // Extract error message if available
+        const errorMessage = error.stdout
+            ? (function() {
+                try {
+                    return JSON.parse(error.stdout).Error || "Transaction failed";
+                } catch (e) {
+                    return "Transaction failed";
+                }
+            })()
+            : error.message;
+
+        return res.status(500).json({ success: false, error: errorMessage });
+    }
+});
   // Then modify your /buy endpoint to use this serializer
   app.post('/buy', async (req, res) => {
       const { coinIndex, amountInUSD, walletAddress } = req.body;

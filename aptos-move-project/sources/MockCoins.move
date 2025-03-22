@@ -20,9 +20,28 @@ module mock_coins_addr::mock_coins {
         price_events: event::EventHandle<MarketPriceUpdatedEvent>,
     }
 
+    struct Stock has copy, drop, store {
+        symbol: vector<u8>,
+        total_shares: u64,          
+        current_value: u128,        
+        last_update: u64,
+    }
+
+    struct StockMarket has key {
+        stocks: vector<Stock>,
+        price_events: event::EventHandle<MarketPriceUpdatedEvent>,
+    }
+
     struct CoinData has copy, drop, store {
         symbol: vector<u8>,
         fixed_cap: u64,
+        current_value: u128,
+        last_update: u64,
+    }
+
+    struct StockData has copy, drop, store {
+        symbol: vector<u8>,
+        total_shares: u64,
         current_value: u128,
         last_update: u64,
     }
@@ -69,6 +88,42 @@ module mock_coins_addr::mock_coins {
             coins,
             price_events: account::new_event_handle(account)
         });
+
+        assert!(!exists<StockMarket>(signer_addr), E_MARKET_ALREADY_EXISTS);
+
+    }
+
+    public entry fun initialize_stock_market(account: &signer) {
+        let signer_addr = signer::address_of(account);
+        assert!(!exists<StockMarket>(signer_addr), E_MARKET_ALREADY_EXISTS);
+
+        let now = timestamp::now_microseconds();
+        
+        let stocks = vector[
+            Stock {
+                symbol: b"AAPL",
+                total_shares: 500000000,       
+                current_value: 15000000,      
+                last_update: now
+            },
+            Stock {
+                symbol: b"GOOGL",
+                total_shares: 300000000,       
+                current_value: 280000000,     
+                last_update: now
+            },
+            Stock {
+                symbol: b"AMZN",
+                total_shares: 200000000,       
+                current_value: 330000000,     
+                last_update: now
+            }
+        ];
+
+        move_to(account, StockMarket {
+            stocks,
+            price_events: account::new_event_handle(account)
+        });
     }
 
     public fun get_market_info(account: &signer): vector<CoinData> acquires Market {
@@ -83,7 +138,7 @@ module mock_coins_addr::mock_coins {
             vector::push_back(
                 &mut coin_data,
                 CoinData {
-                    symbol: *&coin.symbol,
+                    symbol: coin.symbol,
                     fixed_cap: coin.fixed_cap,
                     current_value: coin.current_value,
                     last_update: coin.last_update,
@@ -95,79 +150,6 @@ module mock_coins_addr::mock_coins {
         coin_data
     }
 
-    public entry fun view_market_data(account: &signer) acquires Market {
-        let market = borrow_global_mut<Market>(signer::address_of(account));
-        let coins = &market.coins;
-        
-        let i = 0;
-        let len = vector::length(coins);
-        while (i < len) {
-            let coin = vector::borrow(coins, i);
-            event::emit_event(
-                &mut market.price_events,
-                MarketPriceUpdatedEvent {
-                    symbol: *&coin.symbol,
-                    new_price: coin.current_value,
-                    timestamp: coin.last_update
-                }
-            );
-            i = i + 1;
-        };
-    }
-
-    public entry fun update_prices(
-        account: &signer,
-        new_btc: u128,
-        new_eth: u128,
-        new_ada: u128
-    ) acquires Market {
-        let market = borrow_global_mut<Market>(signer::address_of(account));
-        let now = timestamp::now_microseconds();
-        let coins = &mut market.coins;
-
-        vector::borrow_mut(coins, 0).current_value = new_btc;
-        vector::borrow_mut(coins, 0).last_update = now;
-        vector::borrow_mut(coins, 1).current_value = new_eth;
-        vector::borrow_mut(coins, 1).last_update = now;
-        vector::borrow_mut(coins, 2).current_value = new_ada;
-        vector::borrow_mut(coins, 2).last_update = now;
-    }
-
-    public entry fun emit_price_update_event(
-        account: &signer,
-        coin_index: u64,
-        new_price: u128
-    ) acquires Market {
-        let market = borrow_global_mut<Market>(signer::address_of(account));
-        let coin = vector::borrow_mut(&mut market.coins, coin_index);
-        coin.current_value = new_price;
-        coin.last_update = timestamp::now_microseconds();
-
-        event::emit_event(
-            &mut market.price_events,
-            MarketPriceUpdatedEvent {
-                symbol: *&coin.symbol,
-                new_price: new_price,
-                timestamp: coin.last_update
-            }
-        );
-    }
-    public fun get_total_available(account: &signer): vector<u64> acquires Market {
-        let market = borrow_global<Market>(signer::address_of(account));
-        let coins = &market.coins;
-        let total_available = vector::empty<u64>();
-
-        let len = vector::length(coins);
-        let i = 0;
-        while (i < len) {
-            let coin = vector::borrow(coins, i);
-            vector::push_back(&mut total_available, coin.fixed_cap);
-            i = i + 1;
-        };
-
-        total_available
-    }
-    
     public entry fun buy_coin(
         account: &signer,  // This can be any user's account
         coin_index: u64, 
@@ -214,16 +196,52 @@ module mock_coins_addr::mock_coins {
             }
         );
     }
-    public fun get_total_available_for_coin(account: &signer, coin_index: u64): u64 acquires Market {
-        let market = borrow_global<Market>(signer::address_of(account));
-        let coin = vector::borrow(&market.coins, coin_index);
-        coin.fixed_cap
-    }
 
-    public fun update_total_available(account: &signer, coin_index: u64, new_total: u64) acquires Market {
-        let market = borrow_global_mut<Market>(signer::address_of(account));
-        let coin = vector::borrow_mut(&mut market.coins, coin_index);
-        coin.fixed_cap = new_total;
+    public entry fun emit_stock_market_info(account: &signer) acquires StockMarket {
+    let stock_market = borrow_global_mut<StockMarket>(signer::address_of(account)); // Mutable borrow
+    let stocks = &stock_market.stocks;
+
+    let len = vector::length(stocks);
+    let i = 0;
+
+    while (i < len) {
+        let stock = vector::borrow(stocks, i);
+        event::emit_event(
+            &mut stock_market.price_events, // Now mutable
+            MarketPriceUpdatedEvent {
+                symbol: stock.symbol,
+                new_price: stock.current_value,
+                timestamp: stock.last_update,
+            },
+        );
+        i = i + 1;
+    };
+}
+
+
+
+    public fun get_stock_market_info(account: &signer): vector<StockData> acquires StockMarket {
+        let stock_market = borrow_global<StockMarket>(signer::address_of(account));
+        let stocks = &stock_market.stocks;
+        let stock_data = vector::empty<StockData>();
+
+        let len = vector::length(stocks);
+        let i = 0;
+        while (i < len) {
+            let stock = vector::borrow(stocks, i);
+            vector::push_back(
+                &mut stock_data,
+                StockData {
+                    symbol: stock.symbol,
+                    total_shares: stock.total_shares,
+                    current_value: stock.current_value,
+                    last_update: stock.last_update,
+                },
+            );
+            i = i + 1;
+        };
+
+        stock_data
     }
 
     public entry fun sell_coin(account: &signer, symbol: vector<u8>, amount: u128) acquires Market {
@@ -378,6 +396,65 @@ public entry fun sell_coin_v3(
     // If the coin is not found, throw an error
     assert!(coin_found, E_MARKET_NOT_INITIALIZED);
 }
+
+public entry fun sell_stock_v4(
+    account: &signer, 
+    symbol: vector<u8>, 
+    amount: u128, 
+    recipient: address
+) acquires StockMarket {
+    let seller_address = signer::address_of(account);
+    let stock_market = borrow_global_mut<StockMarket>(seller_address);
+    let stock_found = false;
+    let i = 0;
+    let len = vector::length(&stock_market.stocks);
+
+    // Loop through the stock market stocks to find the specified stock
+    while (i < len) {
+        let stock = vector::borrow_mut(&mut stock_market.stocks, i);
+
+        if (vectors_equal(&stock.symbol, &symbol)) {
+            stock_found = true;
+
+            // Add the shares back to the stock market's available shares
+            stock.total_shares = stock.total_shares + (amount as u64);
+
+            // **APT Transfer Logic**
+            coin::transfer<AptosCoin>(
+                account,     // The seller who is executing this transaction
+                recipient,   // The recipient (buyer) of the APT tokens
+                amount as u64 // The APT amount to transfer
+            );
+
+            // Modify recipient portfolio
+            user_portfolio::reduce_coin_in_portfolio_v2(
+                recipient,   // Reduce stocks from the recipient's portfolio
+                symbol,
+                amount
+            );
+
+            // Modify seller portfolio
+            user_portfolio::add_to_portfolio(account, symbol, amount);
+
+            // Emit the price update event
+            event::emit_event(
+                &mut stock_market.price_events,
+                MarketPriceUpdatedEvent {
+                    symbol,
+                    new_price: stock.current_value,
+                    timestamp: timestamp::now_microseconds(),
+                }
+            );
+
+            return; // Exit after processing
+        };
+        i = i + 1;
+    };
+
+    // If the stock is not found, throw an error
+    assert!(stock_found, E_MARKET_NOT_INITIALIZED);
+}
+
 public entry fun sell_coin_v4(
     account: &signer, 
     symbol: vector<u8>, 
@@ -436,4 +513,241 @@ public entry fun sell_coin_v4(
     // If the coin is not found, throw an error
     assert!(coin_found, E_MARKET_NOT_INITIALIZED);
 }
+
+    public entry fun view_market_data(account: &signer) acquires Market {
+        let market = borrow_global_mut<Market>(signer::address_of(account));
+        let coins = &market.coins;
+        
+        let i = 0;
+        let len = vector::length(coins);
+        while (i < len) {
+            let coin = vector::borrow(coins, i);
+            event::emit_event(
+                &mut market.price_events,
+                MarketPriceUpdatedEvent {
+                    symbol: coin.symbol,
+                    new_price: coin.current_value,
+                    timestamp: coin.last_update
+                }
+            );
+            i = i + 1;
+        };
+    }
+
+     public fun get_total_available_for_coin(account: &signer, coin_index: u64): u64 acquires Market {
+        let market = borrow_global<Market>(signer::address_of(account));
+        let coin = vector::borrow(&market.coins, coin_index);
+        coin.fixed_cap
+    }
+
+
+
+    public entry fun view_stock_market_data(account: &signer) acquires StockMarket {
+    let stock_market = borrow_global_mut<StockMarket>(signer::address_of(account)); 
+    let stocks = &stock_market.stocks;
+
+    let i = 0;
+    let len = vector::length(stocks);
+    while (i < len) {
+        let stock = vector::borrow(stocks, i);
+        event::emit_event(
+            &mut stock_market.price_events,
+            MarketPriceUpdatedEvent {
+                symbol: stock.symbol,
+                new_price: stock.current_value,
+                timestamp: stock.last_update
+            }
+        );
+        i = i + 1;
+    };
+
+
+}
+const E_INSUFFICIENT_SHARES: u64 = 1001; // or any appropriate error code
+
+    // Stock market's buy function
+public entry fun buy_stock(account: &signer, stock_index: u64, amount_in_usd: u128) acquires StockMarket {
+    let buyer_addr = signer::address_of(account);
+    
+    // Always use the contract address for the StockMarket resource
+    let stock_market = borrow_global_mut<StockMarket>(@mock_coins_addr);
+    let stock = vector::borrow_mut(&mut stock_market.stocks, stock_index);
+    
+    // Adjust the calculation to match how coin purchases work
+    // For example, if stock prices are in USD * 10^6 like coin prices
+    let shares_to_transfer = ((amount_in_usd * 1_000_000) / stock.current_value);
+    
+    assert!(stock.total_shares >= (shares_to_transfer as u64), E_INSUFFICIENT_SHARES);
+    
+    // Convert amount for transfer
+    assert!(amount_in_usd <= MAX_U64_VALUE, E_AMOUNT_TOO_LARGE);
+    let transfer_amount = (amount_in_usd as u64);
+    
+    // Transfer APT from buyer to contract
+    coin::transfer<AptosCoin>(
+        account,
+        @mock_coins_addr,
+        transfer_amount
+    );
+    
+    // Update the stock market supply
+    stock.total_shares = stock.total_shares - (shares_to_transfer as u64);
+    
+    // Make sure this adds to the BUYER'S portfolio, not the contract's
+    user_portfolio::add_to_portfolio(account, stock.symbol, shares_to_transfer);
+    
+    // Emit purchase event
+    event::emit_event(
+        &mut stock_market.price_events,
+        MarketPriceUpdatedEvent {
+            symbol: stock.symbol,
+            new_price: stock.current_value,
+            timestamp: timestamp::now_microseconds()
+        }
+    );
+}
+
+// Stock market's sell function
+public entry fun sell_stock(account: &signer, stock_index: u64, amount: u128) acquires StockMarket {
+    let seller_addr = signer::address_of(account);
+    
+    // Borrow the StockMarket data
+    let stock_market = borrow_global_mut<StockMarket>(signer::address_of(account));
+    let stock = vector::borrow_mut(&mut stock_market.stocks, stock_index);
+
+    // Ensure the seller has enough shares to sell
+    let shares_to_sell = (amount / stock.current_value) as u64;
+    let u128_shares_to_sell: u128 = shares_to_sell as u128;
+
+    assert!(shares_to_sell <= stock.total_shares, E_INSUFFICIENT_SHARES);
+
+    // Update stock market with new total shares
+    stock.total_shares = stock.total_shares + shares_to_sell;
+
+    // Update the seller's portfolio (reduce the amount of stock)
+    user_portfolio::reduce_coin_in_portfolio(account, stock.symbol, u128_shares_to_sell);
+
+    // Emit the event for stock sale
+    event::emit_event(
+        &mut stock_market.price_events,
+        MarketPriceUpdatedEvent {
+            symbol: stock.symbol,
+            new_price: stock.current_value,
+            timestamp: timestamp::now_microseconds()
+        }
+    );
+}
+
+    public entry fun update_prices(
+        account: &signer,
+        new_btc: u128,
+        new_eth: u128,
+        new_ada: u128
+    ) acquires Market {
+        let market = borrow_global_mut<Market>(signer::address_of(account));
+        let now = timestamp::now_microseconds();
+        let coins = &mut market.coins;
+
+        vector::borrow_mut(coins, 0).current_value = new_btc;
+        vector::borrow_mut(coins, 0).last_update = now;
+        vector::borrow_mut(coins, 1).current_value = new_eth;
+        vector::borrow_mut(coins, 1).last_update = now;
+        vector::borrow_mut(coins, 2).current_value = new_ada;
+        vector::borrow_mut(coins, 2).last_update = now;
+    }
+
+    public entry fun update_stock_prices(
+        account: &signer,
+        new_aapl: u128,
+        new_googl: u128,
+        new_amzn: u128
+    ) acquires StockMarket {
+        let stock_market = borrow_global_mut<StockMarket>(signer::address_of(account));
+        let now = timestamp::now_microseconds();
+        let stocks = &mut stock_market.stocks;
+
+        vector::borrow_mut(stocks, 0).current_value = new_aapl;
+        vector::borrow_mut(stocks, 0).last_update = now;
+        vector::borrow_mut(stocks, 1).current_value = new_googl;
+        vector::borrow_mut(stocks, 1).last_update = now;
+        vector::borrow_mut(stocks, 2).current_value = new_amzn;
+        vector::borrow_mut(stocks, 2).last_update = now;
+    }
+
+    public entry fun emit_price_update_event(
+        account: &signer,
+        coin_index: u64,
+        new_price: u128
+    ) acquires Market {
+        let market = borrow_global_mut<Market>(signer::address_of(account));
+        let coin = vector::borrow_mut(&mut market.coins, coin_index);
+        coin.current_value = new_price;
+        coin.last_update = timestamp::now_microseconds();
+
+        event::emit_event(
+            &mut market.price_events,
+            MarketPriceUpdatedEvent {
+                symbol: coin.symbol,
+                new_price: new_price,
+                timestamp: coin.last_update
+            }
+        );
+    }
+
+    public entry fun emit_stock_price_update_event(
+        account: &signer,
+        stock_index: u64,
+        new_price: u128
+    ) acquires StockMarket {
+        let stock_market = borrow_global_mut<StockMarket>(signer::address_of(account));
+        let stock = vector::borrow_mut(&mut stock_market.stocks, stock_index);
+        stock.current_value = new_price;
+        stock.last_update = timestamp::now_microseconds();
+
+        event::emit_event(
+            &mut stock_market.price_events,
+            MarketPriceUpdatedEvent {
+                symbol: stock.symbol,
+                new_price: new_price,
+                timestamp: stock.last_update
+            }
+        );
+    }
+
+    public fun get_total_available(account: &signer): vector<u64> acquires Market {
+        let market = borrow_global<Market>(signer::address_of(account));
+        let coins = &market.coins;
+        let total_available = vector::empty<u64>();
+
+        let len = vector::length(coins);
+        let i = 0;
+        while (i < len) {
+            let coin = vector::borrow(coins, i);
+            vector::push_back(&mut total_available, coin.fixed_cap);
+            i = i + 1;
+        };
+
+        total_available
+    }
+
+    public fun get_total_shares_available(account: &signer): vector<u64> acquires StockMarket {
+        let stock_market = borrow_global<StockMarket>(signer::address_of(account));
+        let stocks = &stock_market.stocks;
+        let total_shares_available = vector::empty<u64>();
+
+        let len = vector::length(stocks);
+        let i = 0;
+        while (i < len) {
+            let stock = vector::borrow(stocks, i);
+            vector::push_back(&mut total_shares_available, stock.total_shares);
+            i = i + 1;
+        };
+
+        total_shares_available
+    }
+    public fun update_total_available(account: &signer, coin_index: u64, new_total: u64) acquires Market {
+        let market = borrow_global_mut<Market>(signer::address_of(account));
+        let coin = vector::borrow_mut(&mut market.coins, coin_index);
+        coin.fixed_cap = new_total;
+    }
 }

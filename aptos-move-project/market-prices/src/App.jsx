@@ -10,6 +10,10 @@ const App = () => {
     const [balance, setBalance] = useState(0);
     const [portfolio, setPortfolio] = useState([]);
     const [estimatedCost, setEstimatedCost] = useState(0);
+    const [stockMarketData, setStockMarketData] = useState([]);
+    const [stockAmountToBuy, setStockAmountToBuy] = useState(10); // Default stock buy amount
+    const [stockPortfolio, setStockPortfolio] = useState([]);
+    
 
     const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
 
@@ -37,24 +41,19 @@ const App = () => {
     };
 
     const fetchMarketData = async () => {
-        setLoading(true);
-        try {
-            const response = await fetch('http://localhost:4002/market-data');
-            const data = await response.json();
-            console.log('Fetched market data:', data);
-            if (data && data.data && Array.isArray(data.data)) {
-                setMarketData(data.data);
-            } else {
-                console.error('Invalid market data structure:', data);
-                setMarketData([]);
-            }
-        } catch (error) {
-            console.error('Error fetching market data:', error);
-            setMarketData([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    try {
+        const response = await fetch('http://localhost:4001/market-data'); // Update to match the correct server port
+        const data = await response.json();
+        setMarketData(data);
+    } catch (error) {
+        console.error('Error fetching market data:', error);
+        setMarketData([]);
+    } finally {
+        setLoading(false);
+    }
+};
+
 
     const fetchPortfolio = async () => {
         if (!userWallet) return;
@@ -69,6 +68,24 @@ const App = () => {
             }
         } catch (error) {
             console.error('Error fetching portfolio:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchStockPortfolio = async () => {
+        if (!userWallet) return;
+        setLoading(true);
+        try {
+            const response = await fetch(`http://localhost:4002/stock-portfolio?walletAddress=${userWallet.address}`);
+            const data = await response.json();
+            if (data && data.success) {
+                setStockPortfolio(data.data);
+            } else {
+                setStockPortfolio([]);
+            }
+        } catch (error) {
+            console.error('Error fetching stock portfolio:', error);
         } finally {
             setLoading(false);
         }
@@ -123,10 +140,7 @@ const App = () => {
             console.error(`Error converting input to text: ${input}`, error);
             return 'Unknown';
         }
-    };
-    
-    
-    
+    };  
     
     
     const disconnectWallet = async () => {
@@ -146,6 +160,113 @@ const App = () => {
             alert('Failed to disconnect wallet');
         }
     };
+
+    const buyStock_forstock = async (stockIndex) => {
+        console.log("Selected stock index:", stockIndex);
+        console.log("Amount to Buy:", stockAmountToBuy);
+        console.log("Wallet Address:", userWallet?.address);
+    
+        if (!connected || !userWallet) {
+            alert('Please connect wallet first');
+            return;
+        }
+    
+        setLoading(true);
+        try {
+            // Convert to a regular number for safe JSON serialization
+            const amountAsNumber = parseFloat(stockAmountToBuy);
+            
+            const payload = {
+                stockIndex,
+                amountInUSD: amountAsNumber.toString(), // Convert to string for safe JSON serialization
+                walletAddress: userWallet.address
+            };
+    
+            console.log("Payload sent to backend:", payload);
+    
+            // Get transaction payload from backend
+            const response = await fetch('http://localhost:4002/buy-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+    
+            const data = await response.json();
+    
+            if (!data.success) {
+                throw new Error(data.error || 'Transaction failed');
+            }
+    
+            console.log("Received from backend:", data);
+            
+            // Extract the necessary components for the function string
+            if (!data.pendingTransaction?.payload?.value?.module_name?.address?.address ||
+                !data.pendingTransaction?.payload?.value?.module_name?.name?.value ||
+                !data.pendingTransaction?.payload?.value?.function_name?.value) {
+                throw new Error('Missing transaction components in payload');
+            }
+            
+            // Extract address bytes and convert to hex string
+            const addressBytes = data.pendingTransaction.payload.value.module_name.address.address;
+            const addressHex = '0x' + Object.values(addressBytes)
+                .map(byte => byte.toString(16).padStart(2, '0'))
+                .join('');
+                
+            // Get module and function names
+            const moduleName = data.pendingTransaction.payload.value.module_name.name.value;
+            const functionName = data.pendingTransaction.payload.value.function_name.value;
+            
+            // Construct the full function string in the format required by Petra wallet
+            const fullFunction = `${addressHex}::${moduleName}::${functionName}`;
+            
+            // Convert byte array arguments to proper format
+            const rawArgs = data.pendingTransaction.payload.value.args || [];
+            
+            // Convert the first argument (stock index) to a number
+            const stockIndexArg = parseInt(Object.values(rawArgs[0])[0]);
+            
+            // Process the second argument (amount) properly - this is critical
+            const amountBytes = Object.values(rawArgs[1]);
+            
+            // Carefully reconstruct the amount value from bytes
+            let amountValue = 0;
+            for (let i = 0; i < amountBytes.length; i++) {
+                // Use multiplication and addition instead of bit shifting
+                amountValue = amountValue + (Number(amountBytes[i]) * Math.pow(256, i));
+            }
+            const amountArg = amountValue.toString();
+            
+            // Create a properly formatted entry function payload that Petra can understand
+            const entryFunctionPayload = {
+                type: "entry_function_payload",
+                function: fullFunction,
+                type_arguments: [],
+                arguments: [stockIndexArg, amountArg]
+            };
+            
+            console.log("Entry function payload for Petra:", entryFunctionPayload);
+            
+            // Submit transaction with the correct format
+            const signAndSubmitResult = await window.aptos.signAndSubmitTransaction(entryFunctionPayload);
+    
+            console.log('Transaction confirmed:', signAndSubmitResult);
+            alert(`Successfully purchased stock! You bought approximately ${amountAsNumber} units of stock.`);
+    
+            // Refresh data
+            await Promise.all([
+                fetchMarketData(),
+                fetchBalance(),
+                fetchPortfolio(),
+                fetchStockPortfolio() // Make sure to refresh stock portfolio
+            ]);
+        } catch (error) {
+            console.error('Buy failed:', error);
+            alert(`Transaction failed: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
 
     const buyStock = async (coinIndex) => {
         console.log("Selected coin index:", coinIndex);
@@ -251,57 +372,89 @@ const App = () => {
             setLoading(false);
         }
     };
-    const sellStock = async (tokenIndex) => {
+    const sellStock = async (index, isStock = false) => {
         if (!connected || !userWallet) {
             alert("Please connect your wallet first.");
             return;
         }
-    
-        const token = portfolio[tokenIndex];
-        const tokenSymbol = hexToText(token.symbol); // Convert hex to readable symbol
-    
-        if (!tokenSymbol) {
-            alert("Invalid token symbol.");
-            return;
-        }
-    
-        const amountToSell = prompt(`Enter the amount to sell for ${tokenSymbol} (Available: ${token.amount}):`);
-    
-        if (!amountToSell || isNaN(amountToSell) || amountToSell <= 0) {
-            alert("Invalid amount entered.");
-            return;
-        }
-    
-        const payload = {
-            coinSymbol: tokenSymbol, // Ensure this is a string
-            amountToSell: parseFloat(amountToSell),
-            recipientAddress: userWallet.address, // Replace this with the intended recipient
-        };
-    
-        console.log("Payload to /sell:", payload);
-    
+        
         try {
-            const response = await fetch("http://localhost:4002/sell", {
+            // Determine which portfolio to use
+            const portfolioToUse = isStock ? stockPortfolio : portfolio;
+            
+            if (index < 0 || index >= portfolioToUse.length) {
+                alert("Invalid asset index.");
+                return;
+            }
+            
+            // Get the token from the appropriate portfolio
+            const token = portfolioToUse[index];
+            const tokenSymbol = isStock ? token.symbol : hexToText(token.symbol);
+            const availableAmount = isStock ? parseFloat(token.quantity) : parseFloat(token.amount);
+            
+            // Check if this is one of the stock symbols
+            const isStockSymbol = ['AAPL', 'GOOGL', 'AMZN'].includes(tokenSymbol);
+            
+            // Determine which endpoint to use
+            const endpoint = isStockSymbol 
+                ? "http://localhost:4002/sell-stock" 
+                : "http://localhost:4002/sell";
+            
+            // Prompt user for amount to sell
+            const amountToSell = prompt(`Enter the amount to sell for ${tokenSymbol} (Available: ${availableAmount}):`);
+            if (!amountToSell || isNaN(amountToSell) || parseFloat(amountToSell) <= 0 || parseFloat(amountToSell) > availableAmount) {
+                alert("Invalid amount entered.");
+                return;
+            }
+            
+            setLoading(true);
+            
+            // Prepare the payload based on endpoint type
+            const payload = isStockSymbol
+                ? {
+                    stockSymbol: tokenSymbol,
+                    amountToSell: parseFloat(amountToSell),
+                    recipientAddress: userWallet.address,
+                  }
+                : {
+                    coinSymbol: tokenSymbol, // Changed from 'symbol' to 'coinSymbol'
+                    amountToSell: parseFloat(amountToSell),
+                    recipientAddress: userWallet.address,
+                  };
+            
+            console.log(`Sending sell request to ${endpoint}:`, payload);
+            
+            const response = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
-    
+            
             const data = await response.json();
-    
+            
             if (!data.success) {
                 throw new Error(data.error || "Transaction failed");
             }
-    
-            alert(`Successfully sold ${amountToSell} ${tokenSymbol}. Transaction hash: ${data.transactionHash}`);
+            
+            alert(`Successfully sold ${amountToSell} ${tokenSymbol}.`);
+            
+            // Refresh the appropriate data
+            await Promise.all([
+                fetchBalance(),
+                fetchPortfolio(),
+                fetchStockPortfolio()
+            ]);
         } catch (error) {
-            console.error("Sell failed:", error);
+            console.error("Transaction failed:", error);
             alert(`Transaction failed: ${error.message}`);
+        } finally {
+            setLoading(false);
         }
     };
     
-    
-    
+    useEffect(() => {
+        console.log('Market Data:', marketData); // Log the entire market data array
+    }, [marketData]);
     
 
     useEffect(() => {
@@ -367,68 +520,85 @@ const App = () => {
                 </div>
             ) : (
                 <>
-                    <h3>Market Data</h3>
-                    {!marketData || marketData.length === 0 ? (
-                        <p>No market data available.</p>
-                    ) : (
-                        <div className="row">
-                            {Array.isArray(marketData) && marketData.length > 0 ? (
-                                marketData.map((coin, index) => (
-                                    <div key={index} className="col-md-4 mb-3">
-                                        <div className="card">
-                                            <div className="card-body">
-                                                <h2 className="card-title">{coin.symbol}</h2>
-                                                <p className="card-text">
-                                                    Price: ${coin.price ? coin.price.toFixed(2) : 'N/A'}
-                                                </p>
-                                                <button
-                                                    onClick={() => buyStock(index)}
-                                                    className="btn btn-success me-2"
-                                                    disabled={loading}
-                                                >
-                                                    Buy
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p>No market data available.</p>
-                            )}
-                        </div>
-                    )}
-                    <h3>Your Portfolio</h3>
-                    {!portfolio || portfolio.length === 0 ? (
-                        <p>No tokens in your portfolio.</p>
-                    ) : (
-                        <table className="table">
+                 
+{marketData.map((item, index) => (
+    <div key={index} className="col-md-4 mb-3">
+        <div className="card">
+            <div className="card-body">
+                <h2 className="card-title">{item.symbol}</h2>
+                <p className="card-text">
+                    Price: ${item.price ? item.price.toFixed(2) : 'N/A'}
+                </p>
+                <button
+onClick={() => {
+    if (index < 3) {
+        // Coin logic
+        buyStock(index);
+    } else {
+        // Stock logic
+        const stockIndex = index - 3; // Adjust stock index
+        buyStock_forstock(stockIndex);
+    }
+}}                    className="btn btn-success me-2"
+                    disabled={loading}
+                >
+                    Buy
+                </button>
+            </div>
+        </div>
+    </div>
+))}
+
+
+                    
+<h3 className="mt-4">Your Portfolio</h3>
+<table className="table table-striped">
     <thead>
         <tr>
-            <th>Token</th>
+            <th>Symbol</th>
             <th>Amount</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
-        {portfolio.map((token, index) => (
-            <tr key={index}>
-                <td>{hexToText(token.symbol)}</td>
-                <td>{token.amount}</td>
-                <td>
-                    <button
-                        onClick={() => sellStock(index)}
-                        className="btn btn-danger"
-                        disabled={loading}
-                    >
-                        Sell
-                    </button>
-                </td>
-            </tr>
-        ))}
+        {/* Render Crypto Portfolio */}
+        {/* Render Crypto Portfolio */}
+{portfolio.map((item, index) => (
+    <tr key={`crypto-${index}`}>
+        <td>{hexToText(item.symbol)}</td>
+        <td>{item.amount}</td>
+        <td>
+            <button
+                onClick={() => sellStock(index, false)} // Pass isStock=false for crypto
+                className="btn btn-danger"
+                disabled={loading}
+            >
+                Sell
+            </button>
+        </td>
+    </tr>
+))}
+
+{/* Render Stock Portfolio */}
+{stockPortfolio.map((item, index) => (
+    <tr key={`stock-${index}`}>
+        <td>{item.symbol}</td>
+        <td>{item.quantity || 0}</td>
+        <td>
+            <button
+                onClick={() => sellStock(index, true)} // Pass isStock=true for stocks
+                className="btn btn-danger"
+                disabled={loading}
+            >
+                Sell
+            </button>
+        </td>
+    </tr>
+))}
     </tbody>
 </table>
 
-                    )}
+                    
                 </>
             )}
         </div>

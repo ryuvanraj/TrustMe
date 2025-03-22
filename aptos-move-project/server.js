@@ -1,4 +1,3 @@
-// updateServer.js
 const { AptosClient } = require('aptos');
 const express = require('express');
 const { execSync } = require('child_process');
@@ -14,7 +13,7 @@ const client = new AptosClient('https://fullnode.devnet.aptoslabs.com/v1');
 const contractAddress = '0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d';
 const moduleName = 'mock_coins';
 
-// Cached market data
+// Cached data for market
 let marketData = [];
 
 // Function to generate random number between min and max
@@ -24,13 +23,11 @@ function getRandomPrice(min, max) {
 
 async function updateAndFetchMarketData() {
     try {
-        // Generate random prices between 10-40
+        // Update cryptocurrency prices
         const btcPrice = getRandomPrice(10, 40);
         const ethPrice = getRandomPrice(10, 40);
         const adaPrice = getRandomPrice(10, 40);
 
-        // Update prices using aptos CLI with automatic confirmation
-        console.log('Updating prices...');
         execSync(`aptos move run \
             --function-id "${contractAddress}::${moduleName}::update_prices" \
             --args u128:${btcPrice} u128:${ethPrice} u128:${adaPrice} \
@@ -39,36 +36,36 @@ async function updateAndFetchMarketData() {
             { stdio: 'inherit' }
         );
 
-        // Fetch resource data for display
-        const resource = await client.getAccountResource(
-            contractAddress,
-            `${contractAddress}::${moduleName}::Market`
+        // Update stock prices
+        const stock1Price = getRandomPrice(1, 10);
+        const stock2Price = getRandomPrice(1, 10);
+        const stock3Price = getRandomPrice(1, 10);
+
+        execSync(`aptos move run \
+            --function-id "${contractAddress}::${moduleName}::update_stock_prices" \
+            --args u128:${stock1Price} u128:${stock2Price} u128:${stock3Price} \
+            --assume-yes \
+            --profile default`,
+            { stdio: 'inherit' }
         );
 
-        if (resource && resource.data) {
-            const { coins } = resource.data;
-            marketData = coins.map(coin => ({
-                symbol: Buffer.from(coin.symbol).toString('utf8'),
-                price: Number(coin.current_value) / 1_000_000,
-                lastUpdate: new Date(Number(coin.last_update || Date.now()) / 1000).toLocaleString(),
-            }));
-
-            console.clear();
-            console.log('\n=== Current Market Prices ===');
-            console.log('Timestamp:', new Date().toLocaleString());
-            console.log('--------------------------------');
-
-            marketData.forEach(coin => {
-                console.log(`${coin.symbol}:`);
-                console.log(`  Price: $${coin.price}`);
-                console.log(`  Last Update: ${coin.lastUpdate}`);
-                console.log('--------------------------------');
-            });
-        }
+        // Update market data cache
+        marketData = [
+            { type: 'crypto', symbol: 'BTC', price: btcPrice / 1_000_000 },
+            { type: 'crypto', symbol: 'ETH', price: ethPrice / 1_000_000 },
+            { type: 'crypto', symbol: 'ADA', price: adaPrice / 1_000_000 },
+            { type: 'stock', symbol: 'Stock 1', price: stock1Price / 1_000_000 },
+            { type: 'stock', symbol: 'Stock 2', price: stock2Price / 1_000_000 },
+            { type: 'stock', symbol: 'Stock 3', price: stock3Price / 1_000_000 },
+        ];
     } catch (error) {
-        console.error('Error:', error.message);
+        console.error('Error updating market data:', error.message);
     }
 }
+
+
+
+
 
 // API endpoint to fetch market data
 app.get('/market-data', (req, res) => {
