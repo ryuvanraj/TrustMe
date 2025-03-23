@@ -14,7 +14,7 @@ const ALPHA_VANTAGE_API_KEY = "6SQ7SDS25674KW5G"; // Replace with your actual AP
 const MOCK_STOCKS = {
   AAPL: { exact: 175.25, aptos: 1 },
   GOOGL: { exact: 142.65, aptos: 1 },
-  AMZN: { exact: 178.35, aptos: 1 }
+  TSLA: { exact: 178.35, aptos: 1 }
 };
 
 const MOCK_CRYPTOS = {
@@ -116,7 +116,7 @@ const fetchCryptoPrices = async () => {
 // Function to update Aptos contract with stock & crypto prices
 const updateAptosPrices = async () => {
   try {
-    const stocks = await fetchStockPrices(["AAPL", "GOOGL", "AMZN"]);
+    const stocks = await fetchStockPrices(["AAPL", "GOOGL","TSLA"]);
     const cryptos = await fetchCryptoPrices();
 
     console.log("\n📢 Frontend receives exact values:");
@@ -142,7 +142,7 @@ const updateAptosPrices = async () => {
 
     console.log("\n🔄 Aptos receives first-integer values:");
     console.log(
-      `Stocks: AAPL=${stocks["AAPL"].aptos}, GOOGL=${stocks["GOOGL"].aptos}, AMZN=${stocks["AMZN"].aptos}`
+      `Stocks: AAPL=${stocks["AAPL"].aptos}, GOOGL=${stocks["GOOGL"].aptos}, TSLA=${stocks["TSLA"].aptos}`
     );
     console.log(
       `Cryptos: BTC=${cryptos["BTC-USD"].aptos}, ETH=${cryptos["ETH-USD"].aptos}, ADA=${cryptos["ADA-USD"].aptos}`
@@ -160,7 +160,7 @@ const updateAptosPrices = async () => {
     execSync(
       `aptos move run \
         --function-id "${APTOS_CONTRACT}::${MODULE_NAME}::update_stock_prices" \
-        --args u128:${stocks["AAPL"].aptos} u128:${stocks["GOOGL"].aptos} u128:${stocks["AMZN"].aptos} \
+        --args u128:${stocks["AAPL"].aptos} u128:${stocks["GOOGL"].aptos} u128:${stocks["TSLA"].aptos} \
         --assume-yes \
         --profile default`,
       { stdio: "inherit" }
@@ -175,7 +175,7 @@ const updateAptosPrices = async () => {
 // Modify the market-data endpoint to include status
 app.get("/market-data", async (req, res) => {
   try {
-    const stocks = await fetchStockPrices(["AAPL", "GOOGL", "AMZN"]);
+    const stocks = await fetchStockPrices(["AAPL", "GOOGL", "TSLA"]);
     const cryptos = await fetchCryptoPrices();
 
     res.json({

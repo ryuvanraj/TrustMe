@@ -9,7 +9,8 @@ import AIInsights from '@/components/insights/AIInsights';
 import MarketStats from '@/components/stats/MarketStats';
 import ChatButton from '@/components/chat/ChatButton';
 import { BuyDialog, SellDialog } from '@/components/transactions/TransactionDialogs';
-
+import DetailModal from '@/components/modal/DetailModal';
+import Portfolio from '@/pages/Portfolio';
 // Add interfaces near the top of your file
 interface MarketAsset {
   type: 'stock' | 'crypto';
@@ -32,8 +33,12 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [amountToBuy, setAmountToBuy] = useState(20);
   const [stockAmountToBuy, setStockAmountToBuy] = useState(10);
+  const [riskType, setRiskType] = useState<string | null>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false); 
   const [balance, setBalance] = useState(0);
   const [portfolio, setPortfolio] = useState([]);
+  const [selectedModalAsset, setSelectedModalAsset] = useState(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [stockPortfolio, setStockPortfolio] = useState([]);
   const [showBuyDialog, setShowBuyDialog] = useState(false);
   const [showSellDialog, setShowSellDialog] = useState(false);
@@ -94,7 +99,7 @@ const Index = () => {
     stocks: {
       AAPL: 175.25,
       GOOGL: 142.65,
-      AMZN: 178.35
+      TSLA: 178.35
     },
     cryptos: {
       "BTC-USD": 52150.75,
@@ -150,7 +155,7 @@ const Index = () => {
     const stockNames: { [key: string]: string } = {
       AAPL: 'Apple Inc.',
       GOOGL: 'Alphabet Inc.',
-      AMZN: 'Amazon.com Inc.'
+      TSLA: 'Tesla Inc.'
     };
     return stockNames[symbol] || symbol;
   };
@@ -476,7 +481,7 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
       const availableAmount = isStock ? parseFloat(token.quantity) : parseFloat(token.amount);
       
       // Check if this is one of the stock symbols
-      const isStockSymbol = ['AAPL', 'GOOGL', 'AMZN'].includes(tokenSymbol);
+      const isStockSymbol = ['AAPL', 'GOOGL', 'TSLA'].includes(tokenSymbol);
       
       // Determine which endpoint to use
       const endpoint = isStockSymbol 
@@ -582,12 +587,12 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
     // Since marketData is not an array but an object, we need to find the corresponding index
     
     if (asset.type === "stock") {
-      // Map the stock symbol to a stock index (0 for AAPL, 1 for GOOGL, 2 for AMZN, etc.)
+      // Map the stock symbol to a stock index (0 for AAPL, 1 for GOOGL, 2 for TSLA, etc.)
       // This mapping should match what your backend expects
       const stockMapping = {
         'AAPL': 0,
         'GOOGL': 1,
-        'AMZN': 2
+        'TSLA': 2
         // Add other stocks as needed
       };
       
@@ -733,26 +738,87 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
     return asset.symbol === activeTab;
   });
 
+  useEffect(() => {
+    const storedRiskType = localStorage.getItem("riskType");
+    if (storedRiskType) {
+      setRiskType(storedRiskType);
+    }
+  }, []);
+
+  // Function to handle risk type selection
+  const handleRiskTypeClick = (type: string) => {
+    setRiskType(type); // Update the state
+    localStorage.setItem("riskType", type); // Save to local storage
+    setIsDropdownOpen(false); // Close the dropdown
+  };
+
+  const openDetailModal = (asset) => {
+    setSelectedModalAsset(asset);
+    setIsDetailModalOpen(true);
+  };
+
+  const closeDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedModalAsset(null);
+  };
+
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 bg-black text-white">
         <Hero className="mb-8 rounded-xl border border-white/10 bg-black/50" />
+        <div className="p-3 rounded-lg border border-white/10 bg-black/30">
+  <div className="mb-4 flex items-center gap-4">
+    {/* Connect Wallet Section */}
+    {!connected ? (
+      <button onClick={connectWallet} className="px-4 py-2 rounded-lg bg-blue-600 text-white">
+        Connect Petra Wallet
+      </button>
+    ) : (
+      <div>
+        <p className="mb-1 text-white">Connected: {userWallet.address}</p>
+        <p className="mb-1 text-white">Balance: {balance.toFixed(4)} APT</p>
+        <button onClick={disconnectWallet} className="px-4 py-2 rounded-lg bg-gray-700 text-white">
+          Disconnect Wallet
+        </button>
+      </div>
+    )}
 
-        <div className="mb-4">
-          {!connected ? (
-            <button onClick={connectWallet} className="px-4 py-2 rounded-lg bg-blue-600 text-white">
-              Connect Petra Wallet
-            </button>
-          ) : (
-            <div className="p-3 rounded-lg border border-white/10 bg-black/30">
-              <p className="mb-2">Connected: {userWallet.address}</p>
-              <p className="mb-2">Balance: {balance.toFixed(4)} APT</p>
-              <button onClick={disconnectWallet} className="px-4 py-2 rounded-lg bg-gray-700 text-white">
-                Disconnect Wallet
-              </button>
-            </div>
-          )}
+    {/* Risk Type Dropdown */}
+    <div className="relative">
+      <button
+        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        className="px-4 py-2 rounded-lg bg-blue-500 text-white"
+      >
+        Risk Type: {riskType || "Select"}
+      </button>
+
+      {isDropdownOpen && (
+        <div className="absolute mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+          <button
+            onClick={() => handleRiskTypeClick("Low Risk")}
+            className={`block w-full text-left px-4 py-2 ${
+              riskType === "Low Risk" ? "bg-green-500 text-white" : "hover:bg-gray-100"
+            }`}
+          >
+            Low Risk
+          </button>
+          <button
+            onClick={() => handleRiskTypeClick("High Risk")}
+            className={`block w-full text-left px-4 py-2 ${
+              riskType === "High Risk" ? "bg-red-500 text-white" : "hover:bg-gray-100"
+            }`}
+          >
+            High Risk
+          </button>
         </div>
+      )}
+    </div>
+  </div>
+</div>
+
+
+
+        
 
         <div className="mb-8">
           <h2 className="mb-4 text-2xl font-bold text-white">Market Overview</h2>
@@ -829,87 +895,6 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
           </div>
         )}
 
-        <section className="mt-8">
-          <h2 className="mb-4 text-2xl font-bold text-white">Your Portfolio</h2>
-          {connected ? (
-            <div className="bg-gray-900 p-4 rounded-lg shadow-lg">
-              <h3 className="text-xl font-bold mb-4">Cryptocurrencies</h3>
-              {portfolio.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full table-auto">
-                    <thead>
-                      <tr className="bg-gray-800">
-                        <th className="px-4 py-2 text-left">Symbol</th>
-                        <th className="px-4 py-2 text-left">Amount</th>
-                        <th className="px-4 py-2 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {portfolio.map((item, index) => (
-                        <tr key={`crypto-${index}`} className="border-t border-gray-700">
-                          <td className="px-4 py-2">{hexToText(item.symbol)}</td>
-                          <td className="px-4 py-2">{item.displayAmount || item.amount}</td>
-                          <td className="px-4 py-2 text-right">
-                            <button
-                              onClick={() => sellStock(index, false)}
-                              className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
-                              disabled={loading}
-                            >
-                              Sell
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-400">No cryptocurrencies in your portfolio.</p>
-              )}
-
-              <h3 className="text-xl font-bold mb-4 mt-6">Stocks</h3>
-              {stockPortfolio.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full table-auto">
-                    <thead>
-                      <tr className="bg-gray-800">
-                        <th className="px-4 py-2 text-left">Symbol</th>
-                        <th className="px-4 py-2 text-left">Quantity</th>
-                        <th className="px-4 py-2 text-left">Price</th>
-                        <th className="px-4 py-2 text-left">Value</th>
-                        <th className="px-4 py-2 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockPortfolio.map((item, index) => (
-                        <tr key={`stock-${index}`} className="border-t border-gray-700">
-                          <td className="px-4 py-2">{item.symbol}</td>
-                          <td className="px-4 py-2">{item.displayQuantity || item.quantity}</td>
-                          <td className="px-4 py-2">${item.displayPrice || item.price}</td>
-                          <td className="px-4 py-2">${item.value}</td>
-                          <td className="px-4 py-2 text-right">
-                            <button
-                              onClick={() => sellStock(index, true)}
-                              className="px-3 py-1 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
-                              disabled={loading}
-                            >
-                              Sell
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-gray-400">No stocks in your portfolio.</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-400">Connect your wallet to view your portfolio.</p>
-          )}
-        </section>
-
         <section className="mt-8 mb-8">
           <h2 className="mb-4 text-2xl font-bold text-white">AI Investment Insights</h2>
           <AIInsights />
@@ -943,3 +928,5 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
 };
 
 export default Index;
+
+
