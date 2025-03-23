@@ -59,7 +59,6 @@ const Index = () => {
     <DashboardLayout>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 bg-black text-white">
         <Hero className="mb-8 rounded-xl border border-white/10 bg-black/50" />
-        
 
         <div className="mb-8">
           <h2 className="mb-4 text-2xl font-bold text-white">Market Overview</h2>
