@@ -15,15 +15,15 @@
   },
   "cryptos": {
     "BTC-USD": {
-      "exact": 84244,
+      "exact": 84201,
       "aptos": 8
     },
     "ETH-USD": {
-      "exact": 1996.23,
+      "exact": 1995.07,
       "aptos": 1
     },
     "ADA-USD": {
-      "exact": 0.708347,
+      "exact": 0.707302,
       "aptos": 0
     }
   }

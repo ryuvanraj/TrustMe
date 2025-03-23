@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { AptosClient } from "aptos";
@@ -9,10 +10,23 @@ import MarketStats from '@/components/stats/MarketStats';
 import ChatButton from '@/components/chat/ChatButton';
 import { BuyDialog, SellDialog } from '@/components/transactions/TransactionDialogs';
 
+// Add interfaces near the top of your file
+interface MarketAsset {
+  type: 'stock' | 'crypto';
+  symbol: string;
+  name: string;
+  currentPrice: number;
+  price: number;
+  change: number;
+  changePercentage: number;
+}
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [assets, setAssets] = useState([]);
-  const [marketData, setMarketData] = useState([]);
+  const [marketData, setMarketData] = useState<{
+    [x: string]: any; stocks: { [key: string]: number }, cryptos: { [key: string]: number } 
+} | null>(null);
   const [userWallet, setUserWallet] = useState(null);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -76,6 +90,81 @@ const Index = () => {
     }
   };
 
+  const MOCK_MARKET_DATA = {
+    stocks: {
+      AAPL: 175.25,
+      GOOGL: 142.65,
+      AMZN: 178.35
+    },
+    cryptos: {
+      "BTC-USD": 52150.75,
+      "ETH-USD": 3275.50,
+      "ADA-USD": 0.65
+    }
+  };
+
+  // Add this function to transform market data into assets
+  const transformMarketData = (marketData: any): MarketAsset[] => {
+    const assets: MarketAsset[] = [];
+
+    // Transform stocks
+    if (marketData?.stocks) {
+      Object.entries(marketData.stocks).forEach(([symbol, price]: [string, any]) => {
+        const prevPrice = price * (1 - (Math.random() * 0.1)); // Simulate previous price
+        const change = price - prevPrice;
+        assets.push({
+          type: 'stock',
+          symbol,
+          name: getStockName(symbol),
+          currentPrice: price,
+          price,
+          change,
+          changePercentage: (change / prevPrice) * 100
+        });
+      });
+    }
+
+    // Transform cryptos
+    if (marketData?.cryptos) {
+      Object.entries(marketData.cryptos).forEach(([symbol, price]: [string, any]) => {
+        const cleanSymbol = symbol.replace('-USD', '');
+        const prevPrice = price * (1 - (Math.random() * 0.1)); // Simulate previous price
+        const change = price - prevPrice;
+        assets.push({
+          type: 'crypto',
+          symbol: cleanSymbol,
+          name: getCryptoName(cleanSymbol),
+          currentPrice: price,
+          price,
+          change,
+          changePercentage: (change / prevPrice) * 100
+        });
+      });
+    }
+
+    return assets;
+  };
+
+  // Helper functions to get asset names
+  const getStockName = (symbol: string): string => {
+    const stockNames: { [key: string]: string } = {
+      AAPL: 'Apple Inc.',
+      GOOGL: 'Alphabet Inc.',
+      AMZN: 'Amazon.com Inc.'
+    };
+    return stockNames[symbol] || symbol;
+  };
+
+  const getCryptoName = (symbol: string): string => {
+    const cryptoNames: { [key: string]: string } = {
+      BTC: 'Bitcoin',
+      ETH: 'Ethereum',
+      ADA: 'Cardano'
+    };
+    return cryptoNames[symbol] || symbol;
+  };
+
+  // Modify your fetchMarketData function
   const fetchMarketData = async () => {
     setLoading(true);
     try {
@@ -84,34 +173,51 @@ const Index = () => {
       
       if (data && data.success) {
         setMarketData(data.data);
+        const transformedAssets = transformMarketData(data.data);
+        setAssets(transformedAssets);
+        
+        // Cache the successful response
+        localStorage.setItem('lastMarketData', JSON.stringify(data.data));
+        localStorage.setItem('lastFetchTime', Date.now().toString());
       } else {
-        // Transform the data for older API format
-        const stocks = Object.entries(data.stocks || {}).map(([symbol, price]) => ({
-          type: "stock",
-          symbol,
-          name: `${symbol} Stock`,
-          currentPrice: price,
-          price: price,
-          change: Math.random() * 5 - 2.5,
-          changePercentage: (Math.random() * 2 - 1).toFixed(2),
-        }));
+        // Try to get cached data
+        const cachedData = localStorage.getItem('lastMarketData');
+        const lastFetchTime = localStorage.getItem('lastFetchTime');
+        const fiveMinutes = 5 * 60 * 1000;
 
-        const cryptos = Object.entries(data.cryptos || {}).map(([symbol, price]) => ({
-          type: "crypto",
-          symbol: symbol.split('-')[0],
-          name: `${symbol.split('-')[0]} Cryptocurrency`,
-          currentPrice: price,
-          price: price,
-          change: Math.random() * 5 - 2.5,
-          changePercentage: (Math.random() * 2 - 1).toFixed(2),
-        }));
+        if (cachedData) {
+          const parsedData = JSON.parse(cachedData);
+          setMarketData(parsedData);
+          const transformedAssets = transformMarketData(parsedData);
+          setAssets(transformedAssets);
+          console.log('Using cached market data');
 
-        setAssets([...stocks, ...cryptos]);
-        setMarketData([...stocks, ...cryptos]);
+          // If last fetch was more than 5 minutes ago, schedule a retry
+          if (lastFetchTime && Date.now() - parseInt(lastFetchTime) > fiveMinutes) {
+            setTimeout(fetchMarketData, 5000); // Retry after 5 seconds
+          }
+        } else {
+          // If no cached data, use mock data
+          setMarketData(MOCK_MARKET_DATA);
+          const transformedAssets = transformMarketData(MOCK_MARKET_DATA);
+          setAssets(transformedAssets);
+          console.log('Using mock market data');
+        }
       }
     } catch (error) {
       console.error('Error fetching market data:', error);
-      setMarketData([]);
+      // Use cached or mock data as fallback
+      const cachedData = localStorage.getItem('lastMarketData');
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        setMarketData(parsedData);
+        const transformedAssets = transformMarketData(parsedData);
+        setAssets(transformedAssets);
+      } else {
+        setMarketData(MOCK_MARKET_DATA);
+        const transformedAssets = transformMarketData(MOCK_MARKET_DATA);
+        setAssets(transformedAssets);
+      }
     } finally {
       setLoading(false);
     }
@@ -189,7 +295,7 @@ const Index = () => {
       }
       
       setUserWallet(null);
-      setConnected(false);
+setConnected(false);
       setBalance(0);
       setPortfolio([]);
       setStockPortfolio([]);
@@ -309,108 +415,33 @@ const Index = () => {
   };
 
   // Function to buy cryptocurrencies
-  const buyStock = async (coinIndex) => {
-    console.log("Selected coin index:", coinIndex);
-    console.log("Amount to Buy:", amountToBuy);
-    console.log("Wallet Address:", userWallet?.address);
-
-    if (!connected || !userWallet) {
-      alert('Please connect wallet first');
-      return;
-    }
-
-    if (coinIndex < 0 || coinIndex >= marketData.length) {
-      alert('Invalid coin index');
-      return;
-    }
-
-    setLoading(true);
+  const buyStock = async (stockIndex: number, amountInUSD: number, walletAddress: string) => {
     try {
-      const payload = {
-        coinIndex,
-        amountInUSD: Number(amountToBuy),
-        walletAddress: userWallet.address
-      };
-
-      console.log("Payload sent to backend:", payload);
-
-      // Get transaction payload from backend
-      const response = await fetch('http://localhost:4002/buy', {
+      const response = await fetch('http://localhost:4003/buy-stock', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          stockIndex,
+          amountInUSD,
+          walletAddress,
+        }),
       });
-
+      
       const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Transaction failed');
+      
+      if (data.success) {
+        // Handle the pending transaction
+        console.log('Transaction generated:', data.pendingTransaction);
+        return data;
+      } else {
+        console.error('Failed to buy stock:', data.error);
+        throw new Error(data.error);
       }
-
-      console.log("Received from backend:", data);
-      
-      // Extract the necessary components for the function string
-      if (!data.pendingTransaction?.payload?.value?.module_name?.address?.address ||
-          !data.pendingTransaction?.payload?.value?.module_name?.name?.value ||
-          !data.pendingTransaction?.payload?.value?.function_name?.value) {
-        throw new Error('Missing transaction components in payload');
-      }
-      
-      // Extract address bytes and convert to hex string
-      const addressBytes = data.pendingTransaction.payload.value.module_name.address.address;
-      const addressHex = '0x' + Object.values(addressBytes)
-        .map(byte => byte.toString())
-        .join('');
-          
-      // Get module and function names
-      const moduleName = data.pendingTransaction.payload.value.module_name.name.value;
-      const functionName = data.pendingTransaction.payload.value.function_name.value;
-      
-      // Construct the full function string in the format required by Petra wallet
-      const fullFunction = `${addressHex}::${moduleName}::${functionName}`;
-      
-      // Convert byte array arguments to proper format
-      const rawArgs = data.pendingTransaction.payload.value.args || [];
-      
-      // Convert the first argument (coin index) to a number
-      const coinIndexArg = parseInt(String(Object.values(rawArgs[0])[0]));
-      
-      // Convert the second argument (amount) to a string
-      // This combines all bytes into a single value
-      const amountBytes = Object.values(rawArgs[1]);
-      let amountValue: number = 0;
-      for (let i = 0; i < amountBytes.length; i++) {
-        amountValue += Number(amountBytes[i]) * Math.pow(256, i);
-      }
-      const amountArg = amountValue.toString();
-      
-      // Create a properly formatted entry function payload that Petra can understand
-      const entryFunctionPayload = {
-        type: "entry_function_payload",
-        function: fullFunction,
-        type_arguments: [],
-        arguments: [coinIndexArg, amountArg]
-      };
-      
-      console.log("Entry function payload for Petra:", entryFunctionPayload);
-      
-      // Submit transaction with the correct format
-      const signAndSubmitResult = await window.aptos.signAndSubmitTransaction(entryFunctionPayload);
-
-      console.log('Transaction confirmed:', signAndSubmitResult);
-      alert(`Successfully purchased ${data.metadata.coin_amount} ${data.metadata.coin_symbol}`);
-
-      // Refresh data
-      await Promise.all([
-        fetchMarketData(),
-        fetchBalance(),
-        fetchPortfolio()
-      ]);
     } catch (error) {
-      console.error('Buy failed:', error);
-      alert(`Transaction failed: ${error.message}`);
-    } finally {
-      setLoading(false);
+      console.error('Error buying stock:', error);
+      throw error;
     }
   };
 
@@ -550,7 +581,7 @@ const Index = () => {
       buyStock_forstock(assetIndex);
     } else {
       setAmountToBuy(amount);
-      buyStock(assetIndex);
+      buyStock(assetIndex, amount, userWallet.address);
     }
   };
 
@@ -646,7 +677,7 @@ const Index = () => {
     };
 
     checkConnection();
-    const intervalId = setInterval(fetchMarketData, 10000); // Fetch every 10 seconds
+    const intervalId = setInterval(fetchMarketData, 300000); // Fetch every 5 minutes
 
     return () => clearInterval(intervalId);
   }, []);
@@ -717,8 +748,23 @@ const Index = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {filteredAssets.map((asset) => (
+            {filteredAssets.map((asset: MarketAsset) => (
               <div key={asset.symbol} className="bg-gray-900 p-4 rounded-lg shadow-lg">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="text-xl font-bold">{asset.name}</h3>
+                    <p className="text-gray-400">{asset.symbol}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold">${asset.currentPrice.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}</p>
+                    <p className={`text-sm ${asset.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)} ({asset.changePercentage.toFixed(2)}%)
+                    </p>
+                  </div>
+                </div>
                 <StockChart
                   symbol={asset.symbol}
                   name={asset.name}
