@@ -1,12 +1,15 @@
-const express = require('express');
-const cors = require('cors');
-const { execSync } = require('child_process');
-const { AptosClient, AptosAccount, HexString, TransactionBuilder, Types } = require('aptos');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+import express from 'express';
+import cors from 'cors';
+import { execSync } from 'child_process';
+import { AptosClient, AptosAccount, HexString, TransactionBuilder, Types } from 'aptos';
+import { Buffer } from "buffer";
+
+// Note: This is a cleaner way to import node-fetch in ES modules
+import fetch from 'node-fetch';
+
 const app = express();
 app.use(cors());
 app.use(express.json());
-const { Buffer } = require("buffer");
 
 // Contract and wallet configuration
 const contractAddress = '0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d';
@@ -581,7 +584,10 @@ app.post("/sell-stock", async (req, res) => {
           });
       }
   
-      if (!amountInUSD || isNaN(parseFloat(amountInUSD)) || parseFloat(amountInUSD) <= 0) {
+      // Scale down the amount by dividing by 100
+      const scaledAmountInUSD = parseFloat(amountInUSD) / 100;
+  
+      if (!amountInUSD || isNaN(scaledAmountInUSD) || scaledAmountInUSD <= 0) {
           return res.status(400).json({
               success: false,
               error: 'Invalid amount'
@@ -606,10 +612,11 @@ app.post("/sell-stock", async (req, res) => {
               });
           }
   
+          // Use the scaled amount here
           const result = await prepareBuyTransaction(
               walletAddress,
               parseInt(coinIndex),
-              parseFloat(amountInUSD)
+              scaledAmountInUSD
           );
   
           if (result && result.pendingTransaction) {
@@ -623,7 +630,7 @@ app.post("/sell-stock", async (req, res) => {
                   pendingTransaction: serializedTxn,
                   metadata: {
                       coin: coin.symbol,
-                      amountUSD: parseFloat(amountInUSD).toFixed(2),
+                      amountUSD: scaledAmountInUSD.toFixed(2),
                       amountAPT: result.metadata.apt_amount,
                       coin_amount: result.metadata.coin_amount,
                       coin_symbol: result.metadata.coin_symbol

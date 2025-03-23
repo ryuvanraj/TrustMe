@@ -8,7 +8,24 @@ app.use(cors());
 
 const APTOS_CONTRACT = "0x8ed1668c895c1228c1cee850f4ce8d1efb462550772be3e7ed1c2896ec4ff56d";
 const MODULE_NAME = "mock_coins";
-const ALPHA_VANTAGE_API_KEY = "OV8BM9453TDXPF9E"; // Replace with your actual API key
+const ALPHA_VANTAGE_API_KEY = "6SQ7SDS25674KW5G"; // Replace with your actual API key
+
+// Add mock data constants
+const MOCK_STOCKS = {
+  AAPL: { exact: 175.25, aptos: 1 },
+  GOOGL: { exact: 142.65, aptos: 1 },
+  AMZN: { exact: 178.35, aptos: 1 }
+};
+
+const MOCK_CRYPTOS = {
+  "BTC-USD": { exact: 52150.75, aptos: 5 },
+  "ETH-USD": { exact: 3275.50, aptos: 3 },
+  "ADA-USD": { exact: 0.65, aptos: 1 }
+};
+
+// Add cache variables
+let cachedStocks = { ...MOCK_STOCKS };
+let cachedCryptos = { ...MOCK_CRYPTOS };
 
 // Function to extract the *first integer* of a number
 const getFirstInteger = (num) => {
@@ -16,49 +33,83 @@ const getFirstInteger = (num) => {
   return parseInt(numStr[0]); // Extract first digit
 };
 
-// Function to fetch stock prices from Alpha Vantage
+// Modify the fetchStockPrices function
 const fetchStockPrices = async (symbols) => {
-  try {
-    let stockData = {};
-    
-    for (const symbol of symbols) {
-      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
+  let retryCount = 0;
+  const maxRetries = 3;
 
-      if (!data["Global Quote"] || !data["Global Quote"]["05. price"]) {
-        console.error(`Error fetching ${symbol} data:`, data);
-        continue;
+  while (retryCount < maxRetries) {
+    try {
+      let stockData = {};
+      
+      for (const symbol of symbols) {
+        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (!data["Global Quote"] || !data["Global Quote"]["05. price"]) {
+          console.error(`Attempt ${retryCount + 1}: Error fetching ${symbol} data`);
+          throw new Error(`Failed to fetch ${symbol} data`);
+        }
+
+        const exactPrice = parseFloat(data["Global Quote"]["05. price"]);
+        const aptosPrice = getFirstInteger(exactPrice);
+
+        stockData[symbol] = { exact: exactPrice, aptos: aptosPrice };
       }
 
-      const exactPrice = parseFloat(data["Global Quote"]["05. price"]);
-      const aptosPrice = getFirstInteger(exactPrice); // ✅ Extract first integer only
-
-      stockData[symbol] = { exact: exactPrice, aptos: aptosPrice };
+      // Update cache on successful fetch
+      cachedStocks = { ...stockData };
+      return stockData;
+      
+    } catch (error) {
+      console.error(`Attempt ${retryCount + 1} failed:`, error);
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        console.log("Using mock stock data after all retries failed");
+        return MOCK_STOCKS;
+      }
+      
+      // Wait 2 seconds before retrying
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
-
-    return stockData;
-  } catch (error) {
-    console.error("Error fetching stock prices:", error);
-    return {};
   }
 };
 
-// Function to fetch crypto prices from CoinGecko
+// Modify the fetchCryptoPrices function
 const fetchCryptoPrices = async () => {
-  try {
-    const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano&vs_currencies=usd";
-    const response = await fetch(url);
-    const data = await response.json();
+  let retryCount = 0;
+  const maxRetries = 3;
 
-    return {
-      "BTC-USD": { exact: data.bitcoin.usd, aptos: getFirstInteger(data.bitcoin.usd) },
-      "ETH-USD": { exact: data.ethereum.usd, aptos: getFirstInteger(data.ethereum.usd) },
-      "ADA-USD": { exact: data.cardano.usd, aptos: getFirstInteger(data.cardano.usd) },
-    };
-  } catch (error) {
-    console.error("Error fetching crypto prices:", error);
-    return {};
+  while (retryCount < maxRetries) {
+    try {
+      const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano&vs_currencies=usd";
+      const response = await fetch(url);
+      const data = await response.json();
+
+      const cryptoData = {
+        "BTC-USD": { exact: data.bitcoin.usd, aptos: getFirstInteger(data.bitcoin.usd) },
+        "ETH-USD": { exact: data.ethereum.usd, aptos: getFirstInteger(data.ethereum.usd) },
+        "ADA-USD": { exact: data.cardano.usd, aptos: getFirstInteger(data.cardano.usd) }
+      };
+
+      // Update cache on successful fetch
+      cachedCryptos = { ...cryptoData };
+      return cryptoData;
+
+    } catch (error) {
+      console.error(`Attempt ${retryCount + 1} failed:`, error);
+      retryCount++;
+      
+      if (retryCount === maxRetries) {
+        console.log("Using mock crypto data after all retries failed");
+        return MOCK_CRYPTOS;
+      }
+      
+      // Wait 2 seconds before retrying
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
   }
 };
 
@@ -121,18 +172,29 @@ const updateAptosPrices = async () => {
   }
 };
 
-// API to get latest market data (exact values)
+// Modify the market-data endpoint to include status
 app.get("/market-data", async (req, res) => {
   try {
     const stocks = await fetchStockPrices(["AAPL", "GOOGL", "AMZN"]);
     const cryptos = await fetchCryptoPrices();
 
     res.json({
-      stocks: Object.fromEntries(Object.entries(stocks).map(([k, v]) => [k, v.exact])),
-      cryptos: Object.fromEntries(Object.entries(cryptos).map(([k, v]) => [k, v.exact])),
+      success: true,
+      data: {
+        stocks: Object.fromEntries(Object.entries(stocks).map(([k, v]) => [k, v.exact])),
+        cryptos: Object.fromEntries(Object.entries(cryptos).map(([k, v]) => [k, v.exact])),
+      },
+      isCached: stocks === cachedStocks || cryptos === cachedCryptos
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch market data" });
+    res.status(200).json({
+      success: false,
+      data: {
+        stocks: Object.fromEntries(Object.entries(cachedStocks).map(([k, v]) => [k, v.exact])),
+        cryptos: Object.fromEntries(Object.entries(cachedCryptos).map(([k, v]) => [k, v.exact])),
+      },
+      isCached: true
+    });
   }
 });
 
