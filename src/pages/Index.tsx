@@ -45,11 +45,31 @@ const Index = () => {
   const [selectedAsset, setSelectedAsset] = useState(null);
   // Add this state variable at the top of your component, along with your other useState declarations
 const [expandedAsset, setExpandedAsset] = useState<MarketAsset | null>(null);
+const [analysisData, setAnalysisData] = useState<any>(null);
   const [adminWalletAddress, setAdminWalletAddress] = useState("0x601093cf230a092efc6706a3198d6fe2c7bbfc3b79eab0393e3a7d4b03eb2154"); // Replace with your admin wallet
 
   const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
 
   // Helper function to convert hex to text
+  useEffect(() => {
+    const fetchAnalysisData = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:5001/analyze");
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log("Fetched analysis data:", data); // Log the data
+        setAnalysisData(data);
+      } catch (error) {
+        console.error("Error fetching analysis data:", error);
+        setAnalysisData(null);
+      }
+    };
+
+    fetchAnalysisData();
+  }, []);
+
   const hexToText = (input) => {
     try {
       // If the input is already plain text, return it
@@ -778,6 +798,18 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
     setSelectedModalAsset(null);
   };
 
+  const getAnalysisKey = (assetName) => {
+    const nameMap = {
+      "Apple Inc.": "apple",
+      "Alphabet Inc.": "google",
+      "Amazon.com Inc.": "amazon",
+      "Bitcoin": "bitcoin",
+      "Ethereum": "ethereum",
+      "Cardano": "cardano" // Add this if you have analysis data for Cardano
+    };
+    return nameMap[assetName] || assetName.toLowerCase();
+  };
+
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 bg-black text-white">
@@ -855,130 +887,209 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
           </div>
         </div>
 
-
-        
-<div className="relative">
-      {/* Blur overlay that appears when a card is expanded */}
+        <div className="relative">
+      {/* Blur overlay when a card is expanded */}
       {expandedAsset && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-10"
           onClick={() => setExpandedAsset(null)}
         />
       )}
-      
+
       {loading ? (
         <div className="flex justify-center items-center py-10">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {filteredAssets.map((asset) => (
-            <div 
-              key={asset.symbol} 
-              className={`
-                bg-gray-900 rounded-lg shadow-lg transition-all duration-300
-                ${expandedAsset?.symbol === asset.symbol 
-                  ? "fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 h-5/6 z-20 overflow-auto p-6" 
-                  : "p-4 cursor-pointer"}
-              `}
-              onClick={() => handleCardClick(asset)}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="text-xl font-bold">{asset.name}</h3>
-                  <p className="text-gray-400">{asset.symbol}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold">${asset.currentPrice.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}</p>
-                  <p className={`text-sm ${asset.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)} ({asset.changePercentage.toFixed(2)}%)
-                  </p>
-                </div>
-              </div>
-              
-              <StockChart
-                symbol={asset.symbol}
-                name={asset.name}
-                currentPrice={asset.currentPrice}
-                change={asset.change}
-                changePercentage={asset.changePercentage}
-              />
-              
-              {/* More detailed information shown only when expanded */}
-              {expandedAsset?.symbol === asset.symbol && (
-                <div className="mt-6 border-t border-gray-700 pt-4">
-                  <h4 className="text-lg font-semibold mb-2">Details</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-gray-400">Market Cap</p>
-                      <p className="font-medium">${(asset.currentPrice * 1000000).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">24h Volume</p>
-                      <p className="font-medium">${(asset.currentPrice * 100000).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">52-Week High</p>
-                      <p className="font-medium">${(asset.currentPrice * 1.5).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">52-Week Low</p>
-                      <p className="font-medium">${(asset.currentPrice * 0.7).toFixed(2)}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <div className={`${expandedAsset?.symbol === asset.symbol ? "mt-6" : "mt-4"} flex justify-between`}>
-                {/* Stop propagation to prevent closing the expanded view when clicking buttons */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleBuy(asset);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white"
-                  disabled={loading}
-                >
-                  BUY
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSell(asset);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
-                  disabled={loading}
-                >
-                  SELL
-                </button>
-              </div>
-              
-              {/* Close button only visible in expanded view */}
-              {expandedAsset?.symbol === asset.symbol && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedAsset(null);
-                  }}
-                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700"
-                >
-                  <span className="text-lg">&times;</span>
-                </button>
-              )}
+          {filteredAssets.map((asset) => {
+  const normalizedKey = getAnalysisKey(asset.name); // Use the helper function
+  const aiStock = analysisData?.[normalizedKey] || {
+    AllocatedFunds: "N/A",
+    CompanyName: "N/A",
+    ConfidenceLevel: "N/A",
+    InvestmentDecision: "N/A",
+    MarketAnalysis: { Sentiment: "N/A", SharpeRatio: "N/A", Insight: "N/A" },
+    NextDayPredictedPrice: "N/A",
+  };
+
+  return (
+    <div
+      key={asset.symbol}
+      className={`
+        bg-gray-900 rounded-lg shadow-lg transition-all duration-300
+        ${expandedAsset?.symbol === asset.symbol
+          ? "fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 h-5/6 z-20 overflow-auto p-6"
+          : "p-4 cursor-pointer"}
+      `}
+      onClick={() => handleCardClick(asset)}
+    >
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h3 className="text-xl font-bold">{asset.name}</h3>
+          <p className="text-gray-400">{asset.symbol}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold">${asset.currentPrice.toFixed(2)}</p>
+          <p
+            className={`text-sm ${
+              asset.change >= 0 ? "text-green-500" : "text-red-500"
+            }`}
+          >
+            {asset.change >= 0 ? "+" : ""}
+            {asset.change.toFixed(2)} ({asset.changePercentage.toFixed(2)}%)
+          </p>
+        </div>
+      </div>
+
+      <StockChart
+        symbol={asset.symbol}
+        name={asset.name}
+        currentPrice={asset.currentPrice}
+        change={asset.change}
+        changePercentage={asset.changePercentage}
+      />
+
+      {/* Detailed view when expanded */}
+      {expandedAsset?.symbol === asset.symbol && (
+        <div className="mt-6 border-t border-gray-700 pt-4">
+          <h4 className="text-lg font-semibold mb-2">Details</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-gray-400">Market Cap</p>
+              <p className="font-medium">${(asset.currentPrice * 1000000).toLocaleString()}</p>
             </div>
-          ))}
+            <div>
+              <p className="text-gray-400">24h Volume</p>
+              <p className="font-medium">${(asset.currentPrice * 100000).toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">52-Week High</p>
+              <p className="font-medium">${(asset.currentPrice * 1.5).toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">52-Week Low</p>
+              <p className="font-medium">${(asset.currentPrice * 0.7).toFixed(2)}</p>
+            </div>
+          </div>
+
+          {/* AI Analysis Section */}
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold mb-2">AI Analysis</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-gray-400">Investment Decision</p>
+                <p className="font-medium">{aiStock.InvestmentDecision}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Confidence Level</p>
+                <p className="font-medium">{aiStock.ConfidenceLevel}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Allocated Funds</p>
+                <p className="font-medium">{aiStock.AllocatedFunds}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Next Day Predicted Price</p>
+                <p className="font-medium">{aiStock.NextDayPredictedPrice}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Market Sentiment</p>
+                <p className="font-medium">{aiStock.MarketAnalysis.Sentiment}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Sharpe Ratio</p>
+                <p className="font-medium">{aiStock.MarketAnalysis.SharpeRatio}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`${expandedAsset?.symbol === asset.symbol ? "mt-6" : "mt-4"} flex justify-between`}>
+        {/* Stop propagation to prevent closing the expanded view when clicking buttons */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleBuy(asset);
+          }}
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white"
+          disabled={loading}
+        >
+          BUY
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleSell(asset);
+          }}
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
+          disabled={loading}
+        >
+          SELL
+        </button>
+      </div>
+
+      {/* Close button only visible in expanded view */}
+      {expandedAsset?.symbol === asset.symbol && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpandedAsset(null);
+          }}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700"
+        >
+          <span className="text-lg">&times;</span>
+        </button>
+      )}
+    </div>
+  );
+})}
         </div>
       )}
     </div>
 
-
         <section className="mt-8 mb-8">
-          <h2 className="mb-4 text-2xl font-bold text-white">AI Investment Insights</h2>
-          <AIInsights />
-        </section>
+  <h2 className="mb-4 text-2xl font-bold text-white">AI Investment Insights</h2>
+  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    {filteredAssets.map((asset) => {
+      // Create a mapping between asset names/symbols and analysisData keys
+      const nameToKeyMap = {
+        "Apple Inc.": "apple",
+        "Alphabet Inc.": "google",
+        "Amazon.com Inc.": "amazon",
+        "Bitcoin": "bitcoin",
+        "Ethereum": "ethereum",
+        "Tesla": "tesla",
+      };
+
+      // Get the corresponding key for the asset
+      const normalizedKey = nameToKeyMap[asset.name] || asset.name.toLowerCase();
+
+      // Fetch the AI stock data from analysisData
+      const aiStock = analysisData?.[normalizedKey] || {
+        AllocatedFunds: "N/A",
+        CompanyName: "N/A",
+        ConfidenceLevel: "N/A",
+        InvestmentDecision: "N/A",
+        MarketAnalysis: { Sentiment: "N/A", SharpeRatio: "N/A", Insight: "N/A" },
+        NextDayPredictedPrice: "N/A",
+      };
+
+      return (
+        <div key={asset.symbol} className="bg-gray-900 rounded-lg shadow-lg p-4">
+          <h3 className="text-lg font-bold text-white">{asset.name}</h3>
+          <p className="text-sm text-gray-300">Investment Decision: {aiStock.InvestmentDecision}</p>
+          <p className="text-sm text-gray-300">Confidence Level: {aiStock.ConfidenceLevel}</p>
+          <p className="text-sm text-gray-300">Allocated Funds: {aiStock.AllocatedFunds}</p>
+          <p className="text-sm text-gray-300">Next Day Predicted Price: {aiStock.NextDayPredictedPrice}</p>
+          <p className="text-sm text-gray-300">Market Sentiment: {aiStock.MarketAnalysis.Sentiment}</p>
+          <p className="text-sm text-gray-300">Sharpe Ratio: {aiStock.MarketAnalysis.SharpeRatio}</p>
+        </div>
+      );
+    })}
+  </div>
+</section>
       </div>
 
       {showBuyDialog && selectedAsset && (
