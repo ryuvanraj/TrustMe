@@ -1,2 +1,2 @@
 .aptos/
-build/
+build/*.env
