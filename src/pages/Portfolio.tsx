@@ -1,9 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from 'react';
 import { AptosClient } from "aptos";
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import StockChart from '@/components/charts/StockChart';
-import { BuyDialog, SellDialog } from '@/components/transactions/TransactionDialogs';
+import { SellDialog } from '@/components/transactions/TransactionDialogs';
 
 // Add interfaces
 interface MarketAsset {
@@ -18,10 +18,15 @@ interface MarketAsset {
 }
 
 interface PortfolioItem {
+  [x: string]: any;
   symbol: string;
   amount?: string;
   displayAmount?: string;
   quantity?: string;
+  displayQuantity?: string;
+  price?: string;
+  displayPrice?: string;
+  value?: string;
 }
 
 const Portfolio = () => {
@@ -30,8 +35,6 @@ const Portfolio = () => {
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(0);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [stockPortfolio, setStockPortfolio] = useState<PortfolioItem[]>([]);
-  const [showBuyDialog, setShowBuyDialog] = useState(false);
   const [showSellDialog, setShowSellDialog] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<MarketAsset | null>(null);
   const [marketData, setMarketData] = useState<{
@@ -69,6 +72,20 @@ const Portfolio = () => {
     }
   };
 
+  // Check if a symbol is a stock symbol (add more if needed)
+  const isStockSymbol = (symbol: string): boolean => {
+    const stockSymbols = ['AAPL', 'GOOGL', 'TSLA', 'AMZN'];
+    return stockSymbols.includes(symbol);
+  };
+
+  // Check if a symbol is a crypto symbol 
+  const isCryptoSymbol = (symbol: string): boolean => {
+    const normalizedSymbol = symbol.toUpperCase();
+    return normalizedSymbol.includes('BTC') || 
+           normalizedSymbol.includes('ETH') || 
+           normalizedSymbol.includes('ADA');
+  };
+
   const fetchBalance = async () => {
     if (!userWallet) return;
 
@@ -98,31 +115,38 @@ const Portfolio = () => {
     try {
       const response = await fetch(`http://localhost:4002/portfolio?walletAddress=${userWallet.address}`);
       const data = await response.json();
-      if (data && data.success) {
-        setPortfolio(data.data);
+      console.log("Portfolio data:", data);
+      
+      if (data && data.success && Array.isArray(data.data)) {
+        // Normalize the data and keep everything in one portfolio array
+        const normalizedData = data.data.map(item => {
+          // For items with a hex symbol, convert to text
+          const symbolText = item.symbol?.startsWith('0x') 
+            ? hexToText(item.symbol) 
+            : item.symbol || '';
+          
+          return {
+            symbol: symbolText,
+            // Keep original symbol for reference
+            originalSymbol: item.symbol,
+            // Use quantity field for stocks, amount field for crypto
+            amount: parseFloat(item.amount || '0').toString(),
+            quantity: parseFloat(item.quantity || item.amount || '0').toString(),
+            displayAmount: parseFloat(item.displayAmount || item.amount || '0').toString(),
+            displayQuantity: parseFloat(item.displayQuantity || item.quantity || '0').toString(),
+            price: parseFloat(item.price || '0').toString(),
+            displayPrice: parseFloat(item.displayPrice || item.price || '0').toString(),
+            value: parseFloat(item.value || '0').toString()
+          };
+        });
+        
+        setPortfolio(normalizedData);
       } else {
         setPortfolio([]);
       }
     } catch (error) {
       console.error('Error fetching portfolio:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchStockPortfolio = async () => {
-    if (!userWallet) return;
-    setLoading(true);
-    try {
-      const response = await fetch(`http://localhost:4002/stock-portfolio?walletAddress=${userWallet.address}`);
-      const data = await response.json();
-      if (data && data.success) {
-        setStockPortfolio(data.data);
-      } else {
-        setStockPortfolio([]);
-      }
-    } catch (error) {
-      console.error('Error fetching stock portfolio:', error);
+      setPortfolio([]);
     } finally {
       setLoading(false);
     }
@@ -176,8 +200,7 @@ const Portfolio = () => {
       
       await Promise.all([
         fetchBalance(),
-        fetchPortfolio(),
-        fetchStockPortfolio()
+        fetchPortfolio()
       ]);
     } catch (error) {
       console.error('Error connecting wallet:', error);
@@ -195,7 +218,6 @@ const Portfolio = () => {
       setConnected(false);
       setBalance(0);
       setPortfolio([]);
-      setStockPortfolio([]);
       
       console.log('Wallet disconnected');
     } catch (error) {
@@ -206,22 +228,29 @@ const Portfolio = () => {
 
   // Calculate total portfolio value
   const calculatePortfolioValue = () => {
+    if (!marketData) return;
+    
     let totalValue = 0;
     
-    // Calculate crypto portfolio value
     portfolio.forEach(item => {
-      const symbol = hexToText(item.symbol);
-      const cleanSymbol = symbol.replace('-USD', '');
-      const price = marketData?.cryptos?.[`${cleanSymbol}-USD`] || 0;
-      const amount = parseFloat(item.amount || '0');
-      totalValue += price * amount;
-    });
-    
-    // Calculate stock portfolio value
-    stockPortfolio.forEach(item => {
-      const price = marketData?.stocks?.[item.symbol] || 0;
-      const quantity = parseFloat(item.quantity || '0');
-      totalValue += price * quantity;
+      let price = 0;
+      let amount = 0;
+      const symbol = item.symbol;
+      
+      if (isStockSymbol(symbol)) {
+        // This is a stock
+        price = marketData.stocks?.[symbol] || 0;
+        amount = parseFloat(item.quantity || '0');
+      } else if (isCryptoSymbol(symbol)) {
+        // This is a crypto asset
+        const cleanSymbol = symbol.replace('-USD', '');
+        price = marketData.cryptos?.[`${cleanSymbol}-USD`] || 0;
+        amount = parseFloat(item.amount || '0');
+      }
+      
+      if (!isNaN(amount) && !isNaN(price)) {
+        totalValue += price * amount;
+      }
     });
     
     setPortfolioValue(totalValue);
@@ -243,6 +272,8 @@ const Portfolio = () => {
     
     try {
       let endpoint, payload;
+      
+      console.log("Asset type:", asset.type); // Add this for debugging
       
       if (asset.type === "stock") {
         endpoint = "http://localhost:4002/sell-stock";
@@ -280,7 +311,6 @@ const Portfolio = () => {
       await Promise.all([
         fetchBalance(),
         fetchPortfolio(),
-        fetchStockPortfolio(),
         fetchMarketData()
       ]);
       
@@ -295,38 +325,48 @@ const Portfolio = () => {
 
   // Prepare portfolio data for display
   const getDisplayPortfolio = () => {
-    if (activeTab === "crypto") {
-      return portfolio.map(item => {
-        const symbol = hexToText(item.symbol);
-        const price = marketData?.cryptos?.[`${symbol}-USD`] || 0;
-        const amount = parseFloat(item.amount || '0');
+    // Filter based on active tab
+    return portfolio
+      .filter(item => {
+        if (activeTab === "crypto") {
+          return isCryptoSymbol(item.symbol);
+        } else {
+          return isStockSymbol(item.symbol);
+        }
+      })
+      .map(item => {
+        const symbol = item.symbol;
+        let price = 0;
+        let amount = 0;
+        
+        if (isStockSymbol(symbol)) {
+          // This is a stock
+          price = marketData?.stocks?.[symbol] || 0;
+          amount = parseFloat(item.quantity || '0');
+        } else {
+          // This is a crypto asset
+          const cleanSymbol = symbol.replace('-USD', '');
+          price = marketData?.cryptos?.[`${cleanSymbol}-USD`] || 0;
+          amount = parseFloat(item.amount || '0');
+        }
+        
+        if (isNaN(amount)) {
+          console.warn(`Invalid amount for ${symbol}:`, activeTab === "crypto" ? item.amount : item.quantity);
+          amount = 0;
+        }
+        
         const value = price * amount;
         
         return {
-          type: 'crypto',
-          symbol,
-          name: getCryptoName(symbol),
+          type: isStockSymbol(symbol) ? 'stock' : 'crypto',
+          symbol: isStockSymbol(symbol) ? symbol : symbol.replace('-USD', ''),
+          name: isStockSymbol(symbol) ? getStockName(symbol) : getCryptoName(symbol.replace('-USD', '')),
           amount,
           value,
-          price
+          price,
+          originalSymbol: item.originalSymbol // Keep original symbol for reference
         };
       });
-    } else {
-      return stockPortfolio.map(item => {
-        const price = marketData?.stocks?.[item.symbol] || 0;
-        const quantity = parseFloat(item.quantity || '0');
-        const value = price * quantity;
-        
-        return {
-          type: 'stock',
-          symbol: item.symbol,
-          name: getStockName(item.symbol),
-          amount: quantity,
-          value,
-          price
-        };
-      });
-    }
   };
   
   // Helper functions to get asset names
@@ -334,7 +374,8 @@ const Portfolio = () => {
     const stockNames: { [key: string]: string } = {
       AAPL: 'Apple Inc.',
       GOOGL: 'Alphabet Inc.',
-      TSLA: 'Tesla Inc.'
+      TSLA: 'Tesla Inc.',
+      AMZN: 'Amazon.com Inc.'
     };
     return stockNames[symbol] || symbol;
   };
@@ -375,15 +416,14 @@ const Portfolio = () => {
     if (connected) {
       fetchBalance();
       fetchPortfolio();
-      fetchStockPortfolio();
     }
   }, [connected]);
 
   useEffect(() => {
-    if (marketData && (portfolio.length > 0 || stockPortfolio.length > 0)) {
+    if (marketData && portfolio.length > 0) {
       calculatePortfolioValue();
     }
-  }, [calculatePortfolioValue, marketData, portfolio, stockPortfolio]);
+  }, [marketData, portfolio]);
 
   const displayPortfolio = getDisplayPortfolio();
 

@@ -43,6 +43,8 @@ const Index = () => {
   const [showBuyDialog, setShowBuyDialog] = useState(false);
   const [showSellDialog, setShowSellDialog] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  // Add this state variable at the top of your component, along with your other useState declarations
+const [expandedAsset, setExpandedAsset] = useState<MarketAsset | null>(null);
   const [adminWalletAddress, setAdminWalletAddress] = useState("0x601093cf230a092efc6706a3198d6fe2c7bbfc3b79eab0393e3a7d4b03eb2154"); // Replace with your admin wallet
 
   const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
@@ -540,7 +542,10 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
       setLoading(false);
     }
   };
-
+  const handleCardClick = (asset: MarketAsset) => {
+    // If the clicked asset is already expanded, collapse it, otherwise expand it
+    setExpandedAsset(expandedAsset?.symbol === asset.symbol ? null : asset);
+  };
   // Function to handle purchasing based on asset type
   const handleBuy = (asset) => {
     if (!connected) {
@@ -558,28 +563,39 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
       alert('Please connect your wallet first');
       return connectWallet();
     }
-
-    // Find the asset in the appropriate portfolio
-    let availableAmount = 0;
     
-    if (asset.type === "stock") {
-      const portfolioItem = stockPortfolio.find(item => item.symbol === asset.symbol);
-      if (portfolioItem) {
-        availableAmount = parseFloat(portfolioItem.quantity || 0);
-        setSelectedAsset({...asset, availableAmount});
-        setShowSellDialog(true);
-      } else {
-        alert('You do not own this stock');
+    console.log("Portfolio data:", portfolio); // Debug log to see portfolio structure
+    console.log("Stock portfolio data:", stockPortfolio); // Debug log to see stock portfolio structure
+    
+    // Find the asset in the portfolio - regardless of type, since it all comes from the same endpoint
+    const portfolioItem = portfolio.find(item => {
+      const itemSymbol = item.symbol || "";
+      // Check if the symbol matches either directly or after hexToText conversion
+      return itemSymbol === asset.symbol || hexToText(itemSymbol) === asset.symbol;
+    });
+    
+    console.log("Found portfolio item for", asset.symbol, ":", portfolioItem); // Debug log
+    
+    if (portfolioItem) {
+      // Try to extract amount from various possible fields
+      let availableAmount = parseFloat(
+        portfolioItem.quantity || // Try quantity field first
+        portfolioItem.amount || // Then try amount field
+        portfolioItem.balance || // Then try balance field
+        0 // Default to 0 if none found
+      );
+      
+      console.log("Available amount for", asset.symbol, ":", availableAmount); // Debug log
+      
+      // Make sure availableAmount is a valid number
+      if (isNaN(availableAmount)) {
+        availableAmount = 0;
       }
+      
+      setSelectedAsset({...asset, availableAmount});
+      setShowSellDialog(true);
     } else {
-      const portfolioItem = portfolio.find(item => hexToText(item.symbol) === asset.symbol);
-      if (portfolioItem) {
-        availableAmount = parseFloat(portfolioItem.amount || 0);
-        setSelectedAsset({...asset, availableAmount});
-        setShowSellDialog(true);
-      } else {
-        alert('You do not own this cryptocurrency');
-      }
+      alert(`You do not own ${asset.symbol}`);
     }
   };
 
@@ -815,12 +831,7 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
     </div>
   </div>
 </div>
-
-
-
-        
-
-        <div className="mb-8">
+<div className="mb-8">
           <h2 className="mb-4 text-2xl font-bold text-white">Market Overview</h2>
           <div className="flex space-x-4">
             <button
@@ -844,56 +855,125 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center py-10">
-            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {filteredAssets.map((asset: MarketAsset) => (
-              <div key={asset.symbol} className="bg-gray-900 p-4 rounded-lg shadow-lg">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold">{asset.name}</h3>
-                    <p className="text-gray-400">{asset.symbol}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold">${asset.currentPrice.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    })}</p>
-                    <p className={`text-sm ${asset.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)} ({asset.changePercentage.toFixed(2)}%)
-                    </p>
-                  </div>
+
+        
+<div className="relative">
+      {/* Blur overlay that appears when a card is expanded */}
+      {expandedAsset && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-10"
+          onClick={() => setExpandedAsset(null)}
+        />
+      )}
+      
+      {loading ? (
+        <div className="flex justify-center items-center py-10">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {filteredAssets.map((asset) => (
+            <div 
+              key={asset.symbol} 
+              className={`
+                bg-gray-900 rounded-lg shadow-lg transition-all duration-300
+                ${expandedAsset?.symbol === asset.symbol 
+                  ? "fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-11/12 h-5/6 z-20 overflow-auto p-6" 
+                  : "p-4 cursor-pointer"}
+              `}
+              onClick={() => handleCardClick(asset)}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-xl font-bold">{asset.name}</h3>
+                  <p className="text-gray-400">{asset.symbol}</p>
                 </div>
-                <StockChart
-                  symbol={asset.symbol}
-                  name={asset.name}
-                  currentPrice={asset.currentPrice}
-                  change={asset.change}
-                  changePercentage={asset.changePercentage}
-                />
-                <div className="mt-4 flex justify-between">
-                  <button
-                    onClick={() => handleBuy(asset)}
-                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white"
-                    disabled={loading}
-                  >
-                    BUY
-                  </button>
-                  <button
-                    onClick={() => handleSell(asset)}
-                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
-                    disabled={loading}
-                  >
-                    SELL
-                  </button>
+                <div className="text-right">
+                  <p className="text-2xl font-bold">${asset.currentPrice.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}</p>
+                  <p className={`text-sm ${asset.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)} ({asset.changePercentage.toFixed(2)}%)
+                  </p>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+              
+              <StockChart
+                symbol={asset.symbol}
+                name={asset.name}
+                currentPrice={asset.currentPrice}
+                change={asset.change}
+                changePercentage={asset.changePercentage}
+              />
+              
+              {/* More detailed information shown only when expanded */}
+              {expandedAsset?.symbol === asset.symbol && (
+                <div className="mt-6 border-t border-gray-700 pt-4">
+                  <h4 className="text-lg font-semibold mb-2">Details</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-gray-400">Market Cap</p>
+                      <p className="font-medium">${(asset.currentPrice * 1000000).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">24h Volume</p>
+                      <p className="font-medium">${(asset.currentPrice * 100000).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">52-Week High</p>
+                      <p className="font-medium">${(asset.currentPrice * 1.5).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">52-Week Low</p>
+                      <p className="font-medium">${(asset.currentPrice * 0.7).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className={`${expandedAsset?.symbol === asset.symbol ? "mt-6" : "mt-4"} flex justify-between`}>
+                {/* Stop propagation to prevent closing the expanded view when clicking buttons */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBuy(asset);
+                  }}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 hover:bg-green-700 text-white"
+                  disabled={loading}
+                >
+                  BUY
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSell(asset);
+                  }}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                  disabled={loading}
+                >
+                  SELL
+                </button>
+              </div>
+              
+              {/* Close button only visible in expanded view */}
+              {expandedAsset?.symbol === asset.symbol && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedAsset(null);
+                  }}
+                  className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700"
+                >
+                  <span className="text-lg">&times;</span>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
 
         <section className="mt-8 mb-8">
           <h2 className="mb-4 text-2xl font-bold text-white">AI Investment Insights</h2>
@@ -928,5 +1008,3 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
 };
 
 export default Index;
-
-
