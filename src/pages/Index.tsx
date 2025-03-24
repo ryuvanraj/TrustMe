@@ -101,7 +101,7 @@ const [expandedAsset, setExpandedAsset] = useState<MarketAsset | null>(null);
     stocks: {
       AAPL: 175.25,
       GOOGL: 142.65,
-      TSLA: 178.35
+      AMZN: 178.35
     },
     cryptos: {
       "BTC-USD": 52150.75,
@@ -157,7 +157,7 @@ const [expandedAsset, setExpandedAsset] = useState<MarketAsset | null>(null);
     const stockNames: { [key: string]: string } = {
       AAPL: 'Apple Inc.',
       GOOGL: 'Alphabet Inc.',
-      TSLA: 'Tesla Inc.'
+      AMZN: 'Amazon.com Inc.'
     };
     return stockNames[symbol] || symbol;
   };
@@ -483,7 +483,7 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
       const availableAmount = isStock ? parseFloat(token.quantity) : parseFloat(token.amount);
       
       // Check if this is one of the stock symbols
-      const isStockSymbol = ['AAPL', 'GOOGL', 'TSLA'].includes(tokenSymbol);
+      const isStockSymbol = ['AAPL', 'GOOGL', 'AMZN'].includes(tokenSymbol);
       
       // Determine which endpoint to use
       const endpoint = isStockSymbol 
@@ -603,12 +603,12 @@ const buyStock = async (cryptoIndex, amountInUSD, walletAddress) => {
     // Since marketData is not an array but an object, we need to find the corresponding index
     
     if (asset.type === "stock") {
-      // Map the stock symbol to a stock index (0 for AAPL, 1 for GOOGL, 2 for TSLA, etc.)
+      // Map the stock symbol to a stock index (0 for AAPL, 1 for GOOGL, 2 for AMZN, etc.)
       // This mapping should match what your backend expects
       const stockMapping = {
         'AAPL': 0,
         'GOOGL': 1,
-        'TSLA': 2
+        'AMZN': 2
         // Add other stocks as needed
       };
       

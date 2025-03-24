@@ -74,7 +74,7 @@ const Portfolio = () => {
 
   // Check if a symbol is a stock symbol (add more if needed)
   const isStockSymbol = (symbol: string): boolean => {
-    const stockSymbols = ['AAPL', 'GOOGL', 'TSLA', 'AMZN'];
+    const stockSymbols = ['AAPL', 'GOOGL', 'AMZN', 'AMZN'];
     return stockSymbols.includes(symbol);
   };
 
@@ -374,12 +374,17 @@ const Portfolio = () => {
     const stockNames: { [key: string]: string } = {
       AAPL: 'Apple Inc.',
       GOOGL: 'Alphabet Inc.',
-      TSLA: 'Tesla Inc.',
       AMZN: 'Amazon.com Inc.'
     };
     return stockNames[symbol] || symbol;
   };
 
+  /**
+   * Maps a crypto symbol to its full name.
+   *
+   * @param symbol - e.g. "BTC", "ETH", "ADA"
+   * @returns - e.g. "Bitcoin", "Ethereum", "Cardano"
+   */
   const getCryptoName = (symbol: string): string => {
     const cryptoNames: { [key: string]: string } = {
       BTC: 'Bitcoin',

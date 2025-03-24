@@ -393,7 +393,7 @@ const App = () => {
             const availableAmount = isStock ? parseFloat(token.quantity) : parseFloat(token.amount);
             
             // Check if this is one of the stock symbols
-            const isStockSymbol = ['AAPL', 'GOOGL', 'TSLA'].includes(tokenSymbol);
+            const isStockSymbol = ['AAPL', 'GOOGL', 'AMZN'].includes(tokenSymbol);
             
             // Determine which endpoint to use
             const endpoint = isStockSymbol 

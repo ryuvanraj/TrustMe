@@ -218,7 +218,11 @@ module mock_coins_addr::mock_coins {
     };
 }
 
-
+public entry fun update_coin_supply(account: &signer, coin_index: u64, new_supply: u64) acquires Market {
+    let market = borrow_global_mut<Market>(signer::address_of(account));
+    let coin = vector::borrow_mut(&mut market.coins, coin_index);
+    coin.fixed_cap = new_supply;
+}
 
     public fun get_stock_market_info(account: &signer): vector<StockData> acquires StockMarket {
         let stock_market = borrow_global<StockMarket>(signer::address_of(account));
